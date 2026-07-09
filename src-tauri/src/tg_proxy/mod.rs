@@ -70,6 +70,15 @@ pub struct TgStatus {
 
 #[tauri::command]
 pub fn tg_status() -> TgStatus {
+    build_tg_status(proxy_running())
+}
+
+/// Status for the hot poll path — caller supplies a cached running flag.
+pub fn tg_status_cached(running: bool) -> TgStatus {
+    build_tg_status(running)
+}
+
+fn build_tg_status(running: bool) -> TgStatus {
     let config = read_tg_config();
     let host = config
         .as_ref()
@@ -99,7 +108,7 @@ pub fn tg_status() -> TgStatus {
 
     TgStatus {
         installed: paths::tg_exe().exists(),
-        running: proxy_running(),
+        running,
         host,
         port,
         secret,

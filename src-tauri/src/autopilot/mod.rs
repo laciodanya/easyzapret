@@ -7,6 +7,8 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
+use futures_util::future::join_all;
+
 use crate::settings::{self, AutopilotSettings};
 use crate::{logs, paths, AppState};
 
@@ -98,8 +100,8 @@ fn set_cache(patch: impl FnOnce(&mut RuntimeCache)) {
 
 pub fn status() -> AutopilotStatus {
     let cfg = settings::load();
-    let cache = CACHE.lock().unwrap();
     let persisted = load_persisted();
+    let cache = CACHE.lock().unwrap();
     let now_ms = chrono::Utc::now().timestamp_millis();
     let hour_ago = now_ms - 3_600_000;
     let switches = persisted
@@ -195,12 +197,8 @@ async fn measure_health(cfg: &AutopilotSettings) -> (u32, usize, usize) {
     if probes.is_empty() {
         return (100, 0, 0);
     }
-    let mut ok = 0usize;
-    for p in &probes {
-        if probe_url(p.url).await {
-            ok += 1;
-        }
-    }
+    let results = join_all(probes.iter().map(|p| probe_url(p.url))).await;
+    let ok = results.iter().filter(|&&r| r).count();
     let total = probes.len();
     let pct = ((ok as f64 / total as f64) * 100.0).round() as u32;
     (pct, ok, total)
@@ -556,6 +554,12 @@ pub fn start_background_loop(app: AppHandle) {
 
 #[tauri::command]
 pub async fn run_autopilot_check_now(app: AppHandle) -> AutopilotStatus {
-    run_health_cycle(app).await;
+    let state = app.state::<AppState>();
+    if state.autopilot_busy.load(Ordering::SeqCst) {
+        return status();
+    }
+    tauri::async_runtime::spawn(async move {
+        run_health_cycle(app).await;
+    });
     status()
 }

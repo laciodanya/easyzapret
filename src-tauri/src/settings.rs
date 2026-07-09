@@ -4,6 +4,33 @@ use crate::paths;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+pub struct AutostartSettings {
+    /// Register EasyZapret in the Windows Run key.
+    pub launch_at_login: bool,
+    /// Start Zapret (winws) when the app opens.
+    pub auto_start_zapret: bool,
+    /// Connect WARP after Zapret is up (forces Zapret autostart).
+    pub auto_start_warp: bool,
+    /// Start tg-ws-proxy when the app opens.
+    pub auto_start_tg: bool,
+    /// Open the app minimized to tray.
+    pub start_minimized: bool,
+}
+
+impl Default for AutostartSettings {
+    fn default() -> Self {
+        Self {
+            launch_at_login: false,
+            auto_start_zapret: false,
+            auto_start_warp: false,
+            auto_start_tg: false,
+            start_minimized: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct AutopilotSettings {
     pub enabled: bool,
     /// How often to run health probes while the app is open (minutes).
@@ -60,7 +87,7 @@ impl Default for AutopilotSettings {
 pub struct Settings {
     /// "ru" | "en" | null -> follow system locale
     pub language: Option<String>,
-    /// "light" | "dark" | "purple" | "system"
+    /// "light" | "purple" | "system" (legacy "dark" maps to purple on load)
     pub theme: String,
     /// File name of the selected strategy bat, e.g. "general (ALT5).bat"
     pub selected_strategy: Option<String>,
@@ -70,6 +97,7 @@ pub struct Settings {
     /// Check both components for updates on app start
     pub check_updates_on_start: bool,
     pub autopilot: AutopilotSettings,
+    pub autostart: AutostartSettings,
     /// Last app version for which the user dismissed the "what's new" modal.
     pub last_seen_changelog_version: Option<String>,
 }
@@ -84,16 +112,25 @@ impl Default for Settings {
             tg_version: None,
             check_updates_on_start: true,
             autopilot: AutopilotSettings::default(),
+            autostart: AutostartSettings::default(),
             last_seen_changelog_version: None,
         }
     }
 }
 
 pub fn load() -> Settings {
-    std::fs::read_to_string(paths::settings_file())
+    let mut s = std::fs::read_to_string(paths::settings_file())
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    normalize_theme(&mut s);
+    s
+}
+
+fn normalize_theme(s: &mut Settings) {
+    if s.theme == "dark" {
+        s.theme = "purple".into();
+    }
 }
 
 pub fn save(settings: &Settings) -> Result<(), String> {

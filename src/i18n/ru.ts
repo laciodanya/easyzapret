@@ -60,6 +60,7 @@ export default {
     zapret_required: "WARP включается только при работающем Zapret. Сначала включите Zapret.",
     warp_not_installed: "Cloudflare WARP не установлен. Установите клиент 1.1.1.1 и повторите.",
     generic: "Произошла ошибка: {{message}}",
+    initFailed: "Не удалось загрузить настройки. Перезапустите приложение.",
   },
   home: {
     zapretTitle: "Zapret",
@@ -157,12 +158,13 @@ export default {
     intro: "Кратко о главном в этом релизе:",
     gotIt: "Понятно",
     itemAutopilotFix:
-      "Исправлено зависание интерфейса при автоматической смене стратегии — тяжёлые операции выполняются в фоне.",
-    itemAutopilotWarp:
-      "Автопилот: убран автозапуск Telegram Proxy, оставлено только авто-включение WARP.",
-    itemPurple:
-      "Тема Amethyst переработана — глубокий тёмный интерфейс в стиле VS Code с фиолетовыми акцентами.",
-    itemI18n: "Улучшена русская локализация: «доступность» вместо «здоровья», более естественные формулировки.",
+      "Автопилот больше не подвешивает интерфейс — проверки и смена стратегии идут в фоне, опрос статуса облегчён.",
+    itemAutostart:
+      "Автозагрузка с Windows и автозапуск Zapret → WARP → Telegram Proxy с жёстким порядком.",
+    itemStartup:
+      "Быстрый старт: тёмная тема сразу при загрузке, экран-заглушка вместо белого экрана.",
+    itemTheme:
+      "Amethyst — единственная тёмная тема. Старая «тёмная» убрана, системная тёмная теперь Amethyst.",
   },
   setup: {
     title: "Первоначальная настройка",
@@ -365,9 +367,22 @@ export default {
     langAuto: "Как в системе",
     theme: "Тема",
     themeLight: "Светлая",
-    themeDark: "Тёмная",
     themePurple: "Amethyst",
     themeSystem: "Системная",
+    autostartTitle: "Автозагрузка и автозапуск",
+    autostartDesc: "Что запускать при входе в Windows и при открытии EasyZapret.",
+    launchAtLogin: "Запускать с Windows",
+    launchAtLoginDesc: "Добавить EasyZapret в автозагрузку (реестр Run).",
+    startMinimized: "Сворачивать в трей",
+    startMinimizedDesc: "При автозапуске окно не показывать — только значок в трее.",
+    autoStartZapret: "Автозапуск Zapret",
+    autoStartZapretDesc: "Включать выбранную стратегию при старте приложения.",
+    autoStartWarp: "Автозапуск WARP",
+    autoStartWarpDesc: "Подключать WARP после того, как Zapret запустится.",
+    autoStartTg: "Автозапуск Telegram Proxy",
+    autoStartTgDesc: "Запускать tg-ws-proxy при старте приложения.",
+    autostartOrderNote:
+      "Порядок жёсткий: сначала Zapret, затем WARP. Если включён WARP — Zapret запустится автоматически.",
     dataDir: "Папка данных",
     dataDirNote: "Фиксированный путь — без кириллицы и пробелов, как требует zapret.",
     components: "Компоненты",

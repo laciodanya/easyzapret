@@ -43,7 +43,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-2xl bg-[rgb(var(--surface-elevated))] p-5 shadow-sm ring-1 ring-[rgb(var(--border)/0.65)]",
+        "rounded-2xl bg-[rgb(var(--surface-elevated))] p-5 shadow-sm ring-1 ring-[rgb(var(--border)/0.55)] backdrop-blur-sm",
         className,
       )}
       {...props}

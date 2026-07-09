@@ -24,7 +24,11 @@ function NavIcon({ d }: { d: string }) {
 
 export function Sidebar() {
   const { t } = useTranslation();
-  const { page, setPage, status, appInfo, settings } = useStore();
+  const page = useStore((s) => s.page);
+  const setPage = useStore((s) => s.setPage);
+  const status = useStore((s) => s.status);
+  const appInfo = useStore((s) => s.appInfo);
+  const apOn = useStore((s) => s.settings?.autopilot.enabled);
 
   const items: { id: Page; label: string }[] = [
     { id: "home", label: t("nav.home") },
@@ -40,24 +44,23 @@ export function Sidebar() {
   const zapretOn = status?.zapret.running || status?.zapret.serviceState === "RUNNING";
   const tgOn = status?.tg.running;
   const warpOn = status?.warp.connected;
-  const apOn = settings?.autopilot.enabled;
 
   return (
-    <aside className="flex h-full w-[13.5rem] shrink-0 flex-col border-r border-[rgb(var(--border)/0.65)] bg-[rgb(var(--surface-elevated))]">
-      <div className="flex items-center gap-2.5 px-4 pb-3 pt-4">
-        <Logo size={34} />
+    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-[rgb(var(--border)/0.5)] bg-[rgb(var(--surface-elevated))]">
+      <div className="flex items-center gap-3 px-4 pb-4 pt-5">
+        <Logo size={36} />
         <div className="min-w-0">
-          <div className="truncate text-sm font-bold text-slate-900 dark:text-white">EasyZapret</div>
-          <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+          <div className="truncate text-sm font-bold text-[rgb(var(--text))]">EasyZapret</div>
+          <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[rgb(var(--text-secondary))]">
             <StatusDot tone={zapretOn ? "ok" : "off"} /> Z
             <StatusDot tone={tgOn ? "ok" : "off"} /> T
             <StatusDot tone={warpOn ? "ok" : "off"} /> W
-            {apOn && <span className="ml-0.5 text-accent">AP</span>}
+            {apOn && <span className="ml-0.5 font-semibold text-accent">AP</span>}
           </div>
         </div>
       </div>
 
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2.5">
         {items.map((item) => {
           const active = page === item.id;
           return (
@@ -65,10 +68,10 @@ export function Sidebar() {
               key={item.id}
               onClick={() => setPage(item.id)}
               className={cn(
-                "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-medium transition-colors",
+                "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium transition-all",
                 active
-                  ? "bg-accent-soft text-accent"
-                  : "text-slate-600 hover:bg-[rgb(var(--surface))] dark:text-slate-300",
+                  ? "bg-accent-soft text-accent shadow-sm ring-1 ring-[rgb(var(--accent)/0.2)]"
+                  : "text-[rgb(var(--text-secondary))] hover:bg-[rgb(var(--surface))] hover:text-[rgb(var(--text))]",
               )}
             >
               <NavIcon d={ICONS[item.id]} />
@@ -78,8 +81,8 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="px-4 py-3 text-[10px] text-slate-400">
-        v{appInfo?.version ?? "0.3.1"}
+      <div className="border-t border-[rgb(var(--border)/0.35)] px-4 py-3 text-[10px] text-[rgb(var(--text-secondary))]">
+        v{appInfo?.version ?? "0.4.0"}
       </div>
     </aside>
   );

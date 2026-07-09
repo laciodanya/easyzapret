@@ -25,14 +25,28 @@ export interface AutopilotSettings {
   onlyWhenZapretRunning: boolean;
 }
 
+export interface AutostartSettings {
+  launchAtLogin: boolean;
+  autoStartZapret: boolean;
+  autoStartWarp: boolean;
+  autoStartTg: boolean;
+  startMinimized: boolean;
+}
+
+export interface AutostartState {
+  launchAtLogin: boolean;
+  loginEntryPresent: boolean;
+}
+
 export interface Settings {
   language: "ru" | "en" | null;
-  theme: "light" | "dark" | "purple" | "system";
+  theme: "light" | "purple" | "system";
   selectedStrategy: string | null;
   zapretVersion: string | null;
   tgVersion: string | null;
   checkUpdatesOnStart: boolean;
   autopilot: AutopilotSettings;
+  autostart: AutostartSettings;
   lastSeenChangelogVersion: string | null;
 }
 

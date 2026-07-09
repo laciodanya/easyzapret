@@ -19,7 +19,7 @@ import {
   Spinner,
   Switch,
 } from "../components/ui";
-import type { InstallProgress } from "../lib/types";
+import type { InstallProgress, Settings } from "../lib/types";
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -30,6 +30,7 @@ export function SettingsPage() {
     updates,
     appUpdate,
     updateSettings,
+    updateAutostart,
     checkUpdates,
     refreshComponents,
     refreshStrategies,
@@ -194,10 +195,9 @@ export function SettingsPage() {
             options={[
               { value: "system", label: t("settings.themeSystem") },
               { value: "light", label: t("settings.themeLight") },
-              { value: "dark", label: t("settings.themeDark") },
               { value: "purple", label: t("settings.themePurple") },
             ]}
-            onChange={(theme) => updateSettings({ theme })}
+            onChange={(theme) => updateSettings({ theme: theme as Settings["theme"] })}
           />
         </FieldRow>
         <FieldRow title={t("settings.dataDir")} description={t("settings.dataDirNote")}>
@@ -205,6 +205,47 @@ export function SettingsPage() {
             {appInfo?.dataDir ?? "C:\\EasyZapret"}
           </code>
         </FieldRow>
+      </Card>
+
+      <Card className="mb-4 divide-y divide-[rgb(var(--border)/0.35)]">
+        <h3 className="pb-1 text-sm font-bold uppercase tracking-wide text-[rgb(var(--text-secondary))]">
+          {t("settings.autostartTitle")}
+        </h3>
+        <p className="pb-3 text-xs leading-relaxed text-[rgb(var(--text-secondary))]">
+          {t("settings.autostartDesc")}
+        </p>
+        <FieldRow title={t("settings.launchAtLogin")} description={t("settings.launchAtLoginDesc")}>
+          <Switch
+            checked={settings?.autostart.launchAtLogin ?? false}
+            onChange={(v) => updateAutostart({ launchAtLogin: v })}
+          />
+        </FieldRow>
+        <FieldRow title={t("settings.startMinimized")} description={t("settings.startMinimizedDesc")}>
+          <Switch
+            checked={settings?.autostart.startMinimized ?? false}
+            onChange={(v) => updateAutostart({ startMinimized: v })}
+          />
+        </FieldRow>
+        <FieldRow title={t("settings.autoStartZapret")} description={t("settings.autoStartZapretDesc")}>
+          <Switch
+            checked={settings?.autostart.autoStartZapret ?? false}
+            disabled={settings?.autostart.autoStartWarp}
+            onChange={(v) => updateAutostart({ autoStartZapret: v })}
+          />
+        </FieldRow>
+        <FieldRow title={t("settings.autoStartWarp")} description={t("settings.autoStartWarpDesc")}>
+          <Switch
+            checked={settings?.autostart.autoStartWarp ?? false}
+            onChange={(v) => updateAutostart({ autoStartWarp: v, ...(v ? { autoStartZapret: true } : {}) })}
+          />
+        </FieldRow>
+        <FieldRow title={t("settings.autoStartTg")} description={t("settings.autoStartTgDesc")}>
+          <Switch
+            checked={settings?.autostart.autoStartTg ?? false}
+            onChange={(v) => updateAutostart({ autoStartTg: v })}
+          />
+        </FieldRow>
+        <Note tone="info">{t("settings.autostartOrderNote")}</Note>
       </Card>
 
       <Card className="mb-4">

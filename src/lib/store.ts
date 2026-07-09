@@ -8,6 +8,8 @@ import type {
   AppInfo,
   AppUpdateStatus,
   AutopilotEvent,
+  AutopilotSettings,
+  AutostartSettings,
   ComponentsState,
   FullStatus,
   Settings,
@@ -26,9 +28,14 @@ export type Page =
 
 export type ZapretTab = "service" | "tests" | "lists";
 
+const THEME_KEY = "easyzapret-theme";
+let statusInFlight = false;
+
 interface AppStore {
   page: Page;
   zapretTab: ZapretTab;
+  ready: boolean;
+  initError: boolean;
   appInfo: AppInfo | null;
   settings: Settings | null;
   components: ComponentsState | null;
@@ -49,24 +56,30 @@ interface AppStore {
   refreshComponents: () => Promise<void>;
   refreshStrategies: () => Promise<void>;
   updateSettings: (patch: Partial<Settings>) => Promise<void>;
+  updateAutostart: (patch: Partial<AutostartSettings>) => Promise<void>;
   checkUpdates: (opts?: { silent?: boolean }) => Promise<void>;
   dismissSetup: () => void;
   dismissUpdatesModal: () => void;
   dismissWhatsNew: () => Promise<void>;
 }
 
-function applyTheme(theme: string) {
+function resolveTheme(theme: string): "light" | "purple" {
+  if (theme === "light") return "light";
+  if (theme === "purple" || theme === "dark") return "purple";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "purple" : "light";
+}
+
+export function applyTheme(theme: string) {
   const root = document.documentElement;
   root.classList.remove("dark", "theme-purple");
-
-  if (theme === "purple") {
-    root.classList.add("dark", "theme-purple");
-    return;
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    /* private mode */
   }
-  const dark =
-    theme === "dark" ||
-    (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-  root.classList.toggle("dark", dark);
+  if (resolveTheme(theme) === "purple") {
+    root.classList.add("dark", "theme-purple");
+  }
 }
 
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
@@ -74,7 +87,7 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () 
   if (theme === "system") applyTheme("system");
 });
 
-function defaultAutopilot(): Settings["autopilot"] {
+function defaultAutopilot(): AutopilotSettings {
   return {
     enabled: false,
     intervalMinutes: 15,
@@ -96,16 +109,33 @@ function defaultAutopilot(): Settings["autopilot"] {
   };
 }
 
+function defaultAutostart(): AutostartSettings {
+  return {
+    launchAtLogin: false,
+    autoStartZapret: false,
+    autoStartWarp: false,
+    autoStartTg: false,
+    startMinimized: false,
+  };
+}
+
 function mergeSettings(raw: Settings): Settings {
+  const autostart = { ...defaultAutostart(), ...raw.autostart };
+  if (autostart.autoStartWarp) {
+    autostart.autoStartZapret = true;
+  }
   return {
     ...raw,
     autopilot: { ...defaultAutopilot(), ...raw.autopilot },
+    autostart,
   };
 }
 
 export const useStore = create<AppStore>((set, get) => ({
   page: "home",
   zapretTab: "service",
+  ready: false,
+  initError: false,
   appInfo: null,
   settings: null,
   components: null,
@@ -123,38 +153,49 @@ export const useStore = create<AppStore>((set, get) => ({
   setZapretTab: (zapretTab) => set({ zapretTab, page: "zapret" }),
 
   init: async () => {
-    const [appInfo, rawSettings, components] = await Promise.all([
-      api.getAppInfo(),
-      api.getSettings(),
-      api.getComponentsState(),
-    ]);
-    const settings = mergeSettings(rawSettings);
-    const lang = settings.language ?? systemLanguage();
-    if (i18n.language !== lang) await i18n.changeLanguage(lang);
-    applyTheme(settings.theme);
+    try {
+      const [appInfo, rawSettings, components] = await Promise.all([
+        api.getAppInfo(),
+        api.getSettings(),
+        api.getComponentsState(),
+      ]);
+      const settings = mergeSettings(rawSettings);
+      const lang = settings.language ?? systemLanguage();
+      if (i18n.language !== lang) await i18n.changeLanguage(lang);
+      applyTheme(settings.theme);
 
-    const showWhatsNew =
-      settings.lastSeenChangelogVersion !== appInfo.version;
+      const showWhatsNew = settings.lastSeenChangelogVersion !== appInfo.version;
 
-    set({
-      appInfo,
-      settings,
-      components,
-      showSetup: !components.zapretInstalled || !components.tgInstalled,
-      showWhatsNew,
-    });
-    await Promise.all([get().refreshStatus(), get().refreshStrategies()]);
-    if (settings.checkUpdatesOnStart) {
-      get().checkUpdates().catch(() => {});
+      set({
+        appInfo,
+        settings,
+        components,
+        showSetup: !components.zapretInstalled || !components.tgInstalled,
+        showWhatsNew,
+        ready: true,
+        initError: false,
+      });
+
+      void get().refreshStatus();
+      void get().refreshStrategies();
+      if (settings.checkUpdatesOnStart) {
+        window.setTimeout(() => get().checkUpdates({ silent: true }).catch(() => {}), 4000);
+      }
+    } catch {
+      set({ ready: true, initError: true });
     }
   },
 
   refreshStatus: async () => {
+    if (statusInFlight) return;
+    statusInFlight = true;
     try {
       const status = await api.getStatus();
       set({ status });
     } catch {
-      // backend busy; keep previous status
+      /* backend busy */
+    } finally {
+      statusInFlight = false;
     }
   },
 
@@ -188,6 +229,19 @@ export const useStore = create<AppStore>((set, get) => ({
       await i18n.changeLanguage(patch.language ?? systemLanguage());
       api.refreshTray().catch(() => {});
     }
+  },
+
+  updateAutostart: async (patch) => {
+    const current = get().settings;
+    if (!current) return;
+    const next = { ...current.autostart, ...patch };
+    if (next.autoStartWarp) next.autoStartZapret = true;
+    const settings = mergeSettings({ ...current, autostart: next });
+    set({ settings });
+    if (patch.launchAtLogin !== undefined) {
+      await api.setLaunchAtLogin(patch.launchAtLogin);
+    }
+    await api.saveSettings(settings);
   },
 
   checkUpdates: async (opts) => {

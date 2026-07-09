@@ -70,6 +70,10 @@ export const api = {
   getAutopilotStatus: () => invoke<AutopilotStatus>("get_autopilot_status"),
   runAutopilotCheckNow: () => invoke<AutopilotStatus>("run_autopilot_check_now"),
 
+  getAutostartState: () => invoke<import("./types").AutostartState>("get_autostart_state"),
+  setLaunchAtLogin: (enabled: boolean) =>
+    invoke<import("./types").AutostartState>("set_launch_at_login", { enabled }),
+
   // lists
   readUserLists: () => invoke<{ files: UserListFile[] }>("read_user_lists"),
   saveUserList: (name: string, content: string) =>

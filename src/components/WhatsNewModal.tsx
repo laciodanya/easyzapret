@@ -10,9 +10,9 @@ export function WhatsNewModal() {
 
   const items = [
     t("whatsNew.itemAutopilotFix"),
-    t("whatsNew.itemAutopilotWarp"),
-    t("whatsNew.itemPurple"),
-    t("whatsNew.itemI18n"),
+    t("whatsNew.itemAutostart"),
+    t("whatsNew.itemStartup"),
+    t("whatsNew.itemTheme"),
   ];
 
   return (

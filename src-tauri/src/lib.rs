@@ -1,4 +1,5 @@
 mod admin;
+mod autostart;
 mod autopilot;
 mod logs;
 mod paths;
@@ -12,8 +13,9 @@ mod warp;
 mod zapret;
 
 use std::process::Child;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -75,10 +77,62 @@ struct FullStatus {
     tests_running: bool,
 }
 
-/// Single polling endpoint for the frontend; also keeps the tray in sync.
+struct StatusCache {
+    zapret_service: Option<String>,
+    windivert_service: Option<String>,
+    winws_running: bool,
+    tg_running: bool,
+    fetched_at: Option<Instant>,
+}
+
+static STATUS_CACHE: Mutex<StatusCache> = Mutex::new(StatusCache {
+    zapret_service: None,
+    windivert_service: None,
+    winws_running: false,
+    tg_running: false,
+    fetched_at: None,
+});
+
+static LAST_TRAY: Mutex<Option<Instant>> = Mutex::new(None);
+
+fn refresh_status_cache(force: bool) {
+    let mut cache = STATUS_CACHE.lock().unwrap();
+    if !force {
+        if let Some(at) = cache.fetched_at {
+            if at.elapsed() < Duration::from_millis(1800) {
+                return;
+            }
+        }
+    }
+    cache.winws_running = zapret::process::winws_running();
+    cache.tg_running = tg_proxy::proxy_running();
+    cache.zapret_service = zapret::service::query_service_state("zapret");
+    cache.windivert_service = zapret::service::query_service_state("WinDivert");
+    cache.fetched_at = Some(Instant::now());
+}
+
+fn maybe_refresh_tray(app: &AppHandle, state: &AppState) {
+    let busy = state.autopilot_busy.load(Ordering::SeqCst)
+        || state.tests_running.load(Ordering::SeqCst);
+    if busy {
+        return;
+    }
+    {
+        let last = LAST_TRAY.lock().unwrap();
+        if last
+            .map(|t| t.elapsed() < Duration::from_secs(12))
+            .unwrap_or(false)
+        {
+            return;
+        }
+    }
+    *LAST_TRAY.lock().unwrap() = Some(Instant::now());
+    tray::update_tray_now(app);
+}
+
+/// Single polling endpoint for the frontend.
 #[tauri::command]
 fn get_status(app: AppHandle, state: State<'_, AppState>) -> FullStatus {
-    // Reap the child if winws died on its own (e.g. driver blocked).
     if let Ok(mut guard) = state.zapret_child.try_lock() {
         if let Some(child) = guard.as_mut() {
             if let Ok(Some(_)) = child.try_wait() {
@@ -86,19 +140,38 @@ fn get_status(app: AppHandle, state: State<'_, AppState>) -> FullStatus {
                 if let Ok(mut cur) = state.current_strategy.try_lock() {
                     *cur = None;
                 }
+                refresh_status_cache(true);
             }
         }
     }
-    // WARP is only allowed alongside Zapret; drop it if Zapret went away.
+
+    refresh_status_cache(false);
+    let cache = STATUS_CACHE.lock().unwrap();
+
     warp::enforce_dependency(&state);
+
+    let zapret = zapret::service::ZapretStatus {
+        running: cache.winws_running,
+        current_strategy: state.current_strategy.lock().unwrap().clone(),
+        service_installed: cache.zapret_service.is_some(),
+        service_state: cache.zapret_service.clone(),
+        service_strategy: None,
+        windivert_state: cache.windivert_service.clone(),
+        windivert_sys_present: paths::zapret_bin_dir().join("WinDivert64.sys").exists(),
+    };
+
+    let tg = tg_proxy::tg_status_cached(cache.tg_running);
+
+    drop(cache);
+
     let status = FullStatus {
-        zapret: zapret::service::zapret_status(state.clone()),
-        tg: tg_proxy::tg_status(),
+        zapret,
+        tg,
         warp: warp::quick_status(),
         autopilot: autopilot::status(),
-        tests_running: state.tests_running.load(std::sync::atomic::Ordering::SeqCst),
+        tests_running: state.tests_running.load(Ordering::SeqCst),
     };
-    tray::update_tray_now(&app);
+    maybe_refresh_tray(&app, &state);
     status
 }
 
@@ -178,6 +251,12 @@ pub fn run() {
         .manage(AppState::default())
         .setup(|app| {
             tray::setup_tray(app.handle())?;
+            autostart::maybe_hide_on_start(app.handle());
+            let boot_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                autostart::run_boot_sequence(boot_app).await;
+            });
             autopilot::start_background_loop(app.handle().clone());
             Ok(())
         })
@@ -227,6 +306,8 @@ pub fn run() {
             warp::warp_set_mode,
             autopilot::get_autopilot_status,
             autopilot::run_autopilot_check_now,
+            autostart::get_autostart_state,
+            autostart::set_launch_at_login,
             logs::read_log,
             logs::clear_log,
             logs::logs_dir_path,

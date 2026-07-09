@@ -60,6 +60,7 @@ export default {
     zapret_required: "WARP only runs while Zapret is on. Turn on Zapret first.",
     warp_not_installed: "Cloudflare WARP is not installed. Install the 1.1.1.1 client and try again.",
     generic: "An error occurred: {{message}}",
+    initFailed: "Could not load settings. Try restarting the app.",
   },
   home: {
     zapretTitle: "Zapret",
@@ -156,12 +157,13 @@ export default {
     intro: "A few highlights in this release:",
     gotIt: "Got it",
     itemAutopilotFix:
-      "Fixed UI freeze during automatic strategy switches — heavy work now runs off the main async path.",
-    itemAutopilotWarp:
-      "Autopilot no longer auto-starts Telegram Proxy; only auto-enable WARP remains.",
-    itemPurple:
-      "Amethyst theme reworked — deep VS Code–style dark UI with violet accents.",
-    itemI18n: "Improved Russian localization and clearer “availability” wording.",
+      "Autopilot no longer freezes the UI — checks and strategy switches run in the background with a lighter status poll.",
+    itemAutostart:
+      "Windows login autostart plus ordered Zapret → WARP → Telegram Proxy on app boot.",
+    itemStartup:
+      "Faster startup: dark theme applied instantly, splash screen instead of a white flash.",
+    itemTheme:
+      "Amethyst is the only dark theme now. Legacy “Dark” removed; system dark preference uses Amethyst.",
   },
   setup: {
     title: "Initial setup",
@@ -364,9 +366,22 @@ export default {
     langAuto: "System default",
     theme: "Theme",
     themeLight: "Light",
-    themeDark: "Dark",
     themePurple: "Amethyst",
     themeSystem: "System",
+    autostartTitle: "Autostart & boot",
+    autostartDesc: "What to launch at Windows login and when EasyZapret opens.",
+    launchAtLogin: "Launch with Windows",
+    launchAtLoginDesc: "Add EasyZapret to the Windows Run key.",
+    startMinimized: "Start minimized to tray",
+    startMinimizedDesc: "Hide the main window on autostart — tray icon only.",
+    autoStartZapret: "Auto-start Zapret",
+    autoStartZapretDesc: "Start the selected strategy when the app opens.",
+    autoStartWarp: "Auto-start WARP",
+    autoStartWarpDesc: "Connect WARP after Zapret is up.",
+    autoStartTg: "Auto-start Telegram Proxy",
+    autoStartTgDesc: "Launch tg-ws-proxy when the app opens.",
+    autostartOrderNote:
+      "Order is fixed: Zapret first, then WARP. Enabling WARP also enables Zapret autostart.",
     dataDir: "Data folder",
     dataDirNote: "Fixed path — no cyrillic or spaces, as zapret requires.",
     components: "Components",

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "EasyZapret",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "identifier": "com.easyzapret.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -27,7 +27,9 @@
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -38,7 +40,10 @@
     "windows": {
       "nsis": {
         "installMode": "perMachine",
-        "languages": ["Russian", "English"],
+        "languages": [
+          "Russian",
+          "English"
+        ],
         "displayLanguageSelector": true,
         "installerHooks": "./installer/hooks.nsh"
       }
@@ -46,7 +51,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUxOEIwMzhCNTVCQUJCQTAKUldTZ3U3cFZpd09MVVV1b0N0Y3VPTlBma0FFZVc1c3lZZ21xaU53ZVJRcFl4YytXY3ZEZkkvQ0kK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEREMTIxMzFDRDhERDk1OTgKUldTWWxkM1lIQk1TM1lWLzF5cEFsdmZ5a0dOOXJoaWlHMnpVYXdRMEY2dW4vUFQwVnU0Yk5uU3MK",
       "endpoints": [
         "https://github.com/laciodanya/easyzapret/releases/latest/download/latest.json"
       ],

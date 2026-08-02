@@ -283,21 +283,9 @@ pub fn warp_set_mode(mode: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Enforces the WARP↔Zapret dependency. If WARP is flagged active but Zapret is
-/// no longer running, disconnect WARP. Cheap when WARP is idle or absent.
-pub fn enforce_dependency(state: &AppState) {
-    if !state.warp_active.load(Ordering::SeqCst) {
-        return;
-    }
-    if zapret_running() {
-        return;
-    }
-    if let Some(cli) = warp_cli() {
-        let _ = run(&cli, &["disconnect"], &["disconnect"]);
-        logs::append("warp", "WARP auto-disconnected because Zapret stopped");
-    }
-    state.warp_active.store(false, Ordering::SeqCst);
-}
+/// Kept for status-poll call sites. Connecting still requires Zapret, but once
+/// WARP is up it stays connected even if Zapret is stopped.
+pub fn enforce_dependency(_state: &AppState) {}
 
 /// Disconnects WARP unconditionally (used on app quit).
 pub fn disconnect_quiet() {

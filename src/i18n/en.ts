@@ -16,6 +16,8 @@ export default {
     settings: "Settings",
     warp: "Cloudflare WARP",
     soon: "Soon",
+    collapseSidebar: "Collapse",
+    expandSidebar: "Expand",
   },
   common: {
     on: "On",
@@ -65,11 +67,17 @@ export default {
   home: {
     zapretTitle: "Zapret",
     zapretDesc: "Restores access to Discord, YouTube and other services",
+    zapretShort: "Zapret",
     tgTitle: "Telegram Proxy",
     tgDesc: "A local proxy for a more reliable Telegram Desktop connection",
+    tgShort: "Telegram",
     warpTitle: "Cloudflare WARP",
     warpDesc: "A secure Cloudflare tunnel that works together with Zapret",
+    warpShort: "WARP",
     strategy: "Strategy",
+    pickStrategy: "Choose strategy",
+    focusOne: "Single button",
+    showAll: "Show all",
     noStrategy: "No strategy selected",
     viaService: "Running as a Windows service",
     statusConnected: "Connected",
@@ -161,14 +169,14 @@ export default {
     title: "What's new in v{{version}}",
     intro: "A few highlights in this release:",
     gotIt: "Got it",
-    itemAutopilotFix:
-      "Autopilot no longer freezes the UI — checks and strategy switches run in the background with a lighter status poll.",
-    itemAutostart:
-      "Windows login autostart plus ordered Zapret → WARP → Telegram Proxy on app boot.",
-    itemStartup:
-      "Faster startup: dark theme applied instantly, splash screen instead of a white flash.",
+    itemUi:
+      "Fresh VPN-style UI: power button, strategy picker like a server list, collapsible sidebar.",
+    itemWarp:
+      "WARP no longer disconnects automatically when Zapret stops — keep the tunnel if you want.",
+    itemUpdates:
+      "App updates check the new GitHub repo; if a version is available, the prompt appears on launch.",
     itemTheme:
-      "Amethyst is the only dark theme now. Legacy “Dark” removed; system dark preference uses Amethyst.",
+      "A calmer purple accent and a refreshed app icon.",
   },
   setup: {
     title: "Initial setup",
@@ -349,9 +357,9 @@ export default {
     resetConfirmText:
       "The current registration will be deleted and recreated. WARP will briefly disconnect. Continue?",
     resetDone: "WARP keys reset",
-    needZapret: "WARP only turns on while Zapret is running. Turn on Zapret first.",
+    needZapret: "Turn on Zapret before connecting WARP. After that, WARP can stay on on its own.",
     dependencyNote:
-      "Zapret starts first, then WARP. Turning Zapret off also disconnects WARP.",
+      "Zapret is required for the first connect. If you stop Zapret later, WARP stays connected.",
     worksTogetherTitle: "Designed to work together",
     connectionTipsTitle: "If the connection is unstable",
     conflictNote:
@@ -421,7 +429,7 @@ export default {
     installUpdate: "Install update",
     installingUpdate: "Installing… {{percent}}%",
     appUpdateNote:
-      "Updates are installed inside the app when a signed release is published on GitHub. You can also download the installer manually from the release page.",
+      "Updates come from GitHub laciodanya/easyzapret. If in-app update fails (e.g. an older signing key), download the installer from the release page.",
     updateConfirmTitle: "Update component",
     updateConfirmZapret:
       "Zapret will be stopped before updating: winws.exe, the zapret service and the WinDivert driver will be shut down — otherwise the files are locked and the update fails. The previous state is restored after the new version is installed. Continue?",

@@ -32,7 +32,7 @@ pub fn hidden_command_async(program: &str) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(program);
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
+        // tokio::process::Command exposes creation_flags without CommandExt.
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }

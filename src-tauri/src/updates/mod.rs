@@ -79,7 +79,7 @@ pub struct ComponentsState {
 
 fn http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
-        .user_agent("EasyZapret/0.1 (https://github.com/easyzapret)")
+        .user_agent("EasyZapret/0.5.1 (https://github.com/laciodanya/easyzapret)")
         .build()
         .map_err(|e| e.to_string())
 }
@@ -515,8 +515,8 @@ pub async fn check_updates() -> Vec<UpdateStatus> {
     out
 }
 
-/// Checks the EasyZapret GitHub repo for a newer app release. Notification
-/// only — there is no in-app installer; the UI links to the release page.
+/// Checks the EasyZapret GitHub repo for a newer app release (UI notification
+/// + Tauri updater install path).
 #[tauri::command]
 pub async fn check_app_update(app: AppHandle) -> AppUpdateStatus {
     let current = app.package_info().version.to_string();

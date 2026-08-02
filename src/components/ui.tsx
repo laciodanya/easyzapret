@@ -43,7 +43,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-2xl bg-[rgb(var(--surface-elevated))] p-5 shadow-sm ring-1 ring-[rgb(var(--border)/0.55)] backdrop-blur-sm",
+        "rounded-3xl bg-[rgb(var(--surface-elevated)/0.92)] p-5 shadow-sm ring-1 ring-[rgb(var(--border)/0.55)] backdrop-blur-md",
         className,
       )}
       {...props}
@@ -197,18 +197,18 @@ export function Modal({
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm"
         onClick={onClose}
       />
       <div
         className={cn(
-          "relative z-10 max-h-[85vh] w-full overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-[rgb(var(--surface-elevated))]",
+          "ez-fade-up relative z-10 max-h-[85vh] w-full overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl ring-1 ring-black/5 dark:bg-[rgb(var(--surface-elevated))] dark:ring-white/5",
           wide ? "max-w-2xl" : "max-w-md",
         )}
       >
-        <h2 className="mb-3 text-lg font-bold text-slate-900 dark:text-white">{title}</h2>
+        <h2 className="mb-3 text-lg font-bold tracking-tight text-slate-900 dark:text-white">{title}</h2>
         <div className="text-sm text-slate-600 dark:text-slate-300">{children}</div>
         {footer && <div className="mt-5 flex justify-end gap-2">{footer}</div>}
       </div>
@@ -293,10 +293,12 @@ export function Note({
 
 export function PageHeader({ title, description }: { title: string; description?: string }) {
   return (
-    <div className="mb-5">
+    <div className="ez-fade-up mb-6">
       <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{title}</h1>
       {description && (
-        <p className="mt-1 max-w-3xl text-sm text-slate-500 dark:text-slate-400">{description}</p>
+        <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+          {description}
+        </p>
       )}
     </div>
   );

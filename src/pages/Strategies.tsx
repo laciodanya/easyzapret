@@ -76,6 +76,10 @@ export function StrategiesPage() {
         return t("strategies.groupFakeTls");
       case "simpleFake":
         return t("strategies.groupSimpleFake");
+      default: {
+        const _exhaustive: never = id;
+        return _exhaustive;
+      }
     }
   }
 
@@ -138,7 +142,7 @@ export function StrategiesPage() {
                       ({items.length})
                     </span>
                   </h3>
-                  <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200/70 dark:bg-slate-900 dark:ring-slate-800">
+                  <div className="overflow-hidden rounded-3xl bg-[rgb(var(--surface-elevated))] ring-1 ring-[rgb(var(--border)/0.55)]">
                     {items.map((name, i) => {
                       const isSelected = name === selected;
                       const label = prettyName(name);

@@ -80,7 +80,7 @@ export default function App() {
             {t("adminWarning")}
           </div>
         )}
-        <div className="min-h-0 flex-1 overflow-y-auto p-5 md:p-7">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 md:p-8">
           {page === "home" && <HomePage />}
           {page === "autopilot" && <AutopilotPage />}
           {page === "strategies" && <StrategiesPage />}

@@ -30,6 +30,15 @@ export type Page =
 export type ZapretTab = "service" | "tests" | "lists";
 
 const THEME_KEY = "easyzapret-theme";
+const SIDEBAR_KEY = "easyzapret-sidebar-expanded";
+
+function readSidebarExpanded(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 interface AppStore {
   page: Page;
@@ -48,9 +57,11 @@ interface AppStore {
   showSetup: boolean;
   showUpdatesModal: boolean;
   showWhatsNew: boolean;
+  sidebarExpanded: boolean;
 
   setPage: (page: Page) => void;
   setZapretTab: (tab: ZapretTab) => void;
+  setSidebarExpanded: (expanded: boolean) => void;
   init: () => Promise<void>;
   refreshStatus: () => Promise<void>;
   refreshComponents: () => Promise<void>;
@@ -148,9 +159,18 @@ export const useStore = create<AppStore>((set, get) => ({
   showSetup: false,
   showUpdatesModal: false,
   showWhatsNew: false,
+  sidebarExpanded: readSidebarExpanded(),
 
   setPage: (page) => set({ page }),
   setZapretTab: (zapretTab) => set({ zapretTab, page: "zapret" }),
+  setSidebarExpanded: (expanded) => {
+    try {
+      localStorage.setItem(SIDEBAR_KEY, expanded ? "1" : "0");
+    } catch {
+      /* private mode */
+    }
+    set({ sidebarExpanded: expanded });
+  },
 
   init: async () => {
     try {
@@ -179,7 +199,8 @@ export const useStore = create<AppStore>((set, get) => ({
       void get().refreshStatus();
       void get().refreshStrategies();
       if (settings.checkUpdatesOnStart) {
-        window.setTimeout(() => get().checkUpdates({ silent: true }).catch(() => {}), 4000);
+        // Wait for WhatsNew/setup first; then open the updates modal if needed.
+        window.setTimeout(() => get().checkUpdates({ silent: false }).catch(() => {}), 4500);
       }
     } catch {
       set({ ready: true, initError: true });
@@ -250,27 +271,39 @@ export const useStore = create<AppStore>((set, get) => ({
       const hasErrors = updates.every((u) => u.error) && (!appUpdate || !!appUpdate.error);
       const anyAvailable =
         updates.some((u) => u.updateAvailable) || !!appUpdate?.updateAvailable;
+      const { showWhatsNew, showSetup } = get();
+      const canShowModal = anyAvailable && !showWhatsNew && !showSetup;
       set({
         updates,
         appUpdate,
         updatesCheckedAt: new Date(),
         updatesError: hasErrors,
-        ...(silent ? {} : { showUpdatesModal: anyAvailable }),
+        ...(silent ? {} : { showUpdatesModal: canShowModal }),
       });
     } catch {
       set({ updatesCheckedAt: new Date(), updatesError: true });
     }
   },
 
-  dismissSetup: () => set({ showSetup: false }),
+  dismissSetup: () => {
+    const { updates, appUpdate, showWhatsNew } = get();
+    const anyAvailable =
+      !!updates?.some((u) => u.updateAvailable) || !!appUpdate?.updateAvailable;
+    set({
+      showSetup: false,
+      ...(anyAvailable && !showWhatsNew ? { showUpdatesModal: true } : {}),
+    });
+  },
   dismissUpdatesModal: () => set({ showUpdatesModal: false }),
 
   dismissWhatsNew: async () => {
-    const { appInfo } = get();
+    const { appInfo, updates, appUpdate } = get();
     if (appInfo) {
       await get().updateSettings({ lastSeenChangelogVersion: appInfo.version });
     }
-    set({ showWhatsNew: false });
+    const anyAvailable =
+      !!updates?.some((u) => u.updateAvailable) || !!appUpdate?.updateAvailable;
+    set({ showWhatsNew: false, ...(anyAvailable ? { showUpdatesModal: true } : {}) });
   },
 }));
 

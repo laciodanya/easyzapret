@@ -16,6 +16,8 @@ export default {
     settings: "Настройки",
     warp: "Cloudflare WARP",
     soon: "Скоро",
+    collapseSidebar: "Свернуть",
+    expandSidebar: "Развернуть",
   },
   common: {
     on: "Включено",
@@ -65,11 +67,17 @@ export default {
   home: {
     zapretTitle: "Zapret",
     zapretDesc: "Открывает доступ к Discord, YouTube и другим сервисам",
+    zapretShort: "Zapret",
     tgTitle: "Telegram Proxy",
     tgDesc: "Локальный прокси для стабильной работы Telegram Desktop",
+    tgShort: "Telegram",
     warpTitle: "Cloudflare WARP",
     warpDesc: "Защищённый туннель Cloudflare, который работает вместе с Zapret",
+    warpShort: "WARP",
     strategy: "Стратегия",
+    pickStrategy: "Выбор стратегии",
+    focusOne: "Одна кнопка",
+    showAll: "Показать все",
     noStrategy: "Стратегия не выбрана",
     viaService: "Работает как служба Windows",
     statusConnected: "Подключено",
@@ -162,14 +170,14 @@ export default {
     title: "Что нового в v{{version}}",
     intro: "Кратко о главном в этом релизе:",
     gotIt: "Понятно",
-    itemAutopilotFix:
-      "Автопилот больше не подвешивает интерфейс - проверки и смена стратегии идут в фоне, опрос статуса облегчён.",
-    itemAutostart:
-      "Автозагрузка с Windows и автозапуск Zapret → WARP → Telegram Proxy с жёстким порядком.",
-    itemStartup:
-      "Быстрый старт: тёмная тема сразу при загрузке, экран-заглушка вместо белого экрана.",
+    itemUi:
+      "Новый интерфейс в духе VPN-клиента: круглая кнопка питания, выбор стратегии как серверов, сворачиваемый сайдбар.",
+    itemWarp:
+      "WARP больше не выключается сам при остановке Zapret — можно держать туннель отдельно.",
+    itemUpdates:
+      "Проверка обновлений EasyZapret с нового GitHub; при наличии версии окно показывается при запуске.",
     itemTheme:
-      "Обновленная темная тема",
+      "Приятный фиолетовый акцент и обновлённая иконка приложения.",
   },
   setup: {
     title: "Первоначальная настройка",
@@ -350,9 +358,9 @@ export default {
     resetConfirmText:
       "Текущая регистрация будет удалена и создана заново. WARP кратко отключится. Продолжить?",
     resetDone: "Ключи WARP сброшены",
-    needZapret: "WARP включается только при работающем Zapret. Сначала включите Zapret.",
+    needZapret: "Чтобы включить WARP, сначала запустите Zapret. После подключения WARP можно оставить включённым отдельно.",
     dependencyNote:
-      "Сначала запускается Zapret, затем WARP. Если выключить Zapret, WARP отключится автоматически.",
+      "Для первого подключения нужен работающий Zapret. Если потом выключить Zapret, WARP останется подключённым.",
     worksTogetherTitle: "Работают вместе",
     connectionTipsTitle: "Если соединение нестабильно",
     conflictNote:
@@ -422,7 +430,7 @@ export default {
     installUpdate: "Установить обновление",
     installingUpdate: "Установка… {{percent}}%",
     appUpdateNote:
-      "Обновления устанавливаются внутри приложения, когда на GitHub опубликован подписанный релиз. При необходимости можно скачать установщик вручную со страницы релиза.",
+      "Обновления ставятся из приложения с GitHub laciodanya/easyzapret. Если автообновление не срабатывает (например, стояла старая подпись) — скачайте установщик вручную со страницы релиза.",
     updateConfirmTitle: "Обновление компонента",
     updateConfirmZapret:
       "Перед обновлением Zapret будет остановлен: завершится winws.exe, служба zapret и драйвер WinDivert — иначе файлы заняты и обновиться нельзя. После установки новой версии прежнее состояние восстановится. Продолжить?",

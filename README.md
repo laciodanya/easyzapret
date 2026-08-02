@@ -149,6 +149,3 @@ ZapretUI/
 - **[bol-van](https://github.com/bol-van)** — за оригинальный [zapret](https://github.com/bol-van/zapret) и winws
 - [hyperion-cs/dpi-checkers](https://github.com/hyperion-cs/dpi-checkers) — набор DPI-чекеров, используемый в тестах
 
----
-
-*Личный проект. EasyZapret не связан с FlowSeal. Используйте на свой страх и риск.*

@@ -10,8 +10,6 @@
 
 ## ⬇️ Скачать для Windows
 
-**Установщик лежит не в «Code», а в разделе Releases — откройте его и скачайте файл `EasyZapret_*_x64-setup.exe` из блока Assets.**
-
 <br>
 
 <a href="https://github.com/danyalacio/easyzapret/releases/latest">

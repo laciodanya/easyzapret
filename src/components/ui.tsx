@@ -254,14 +254,37 @@ export function Note({
   children: React.ReactNode;
 }) {
   const tones = {
-    info: "bg-blue-500/8 ring-blue-500/20 text-blue-900 dark:text-blue-200",
-    warn: "bg-amber-500/8 ring-amber-500/25 text-amber-900 dark:text-amber-200",
-    fail: "bg-red-500/8 ring-red-500/25 text-red-900 dark:text-red-200",
+    info: {
+      panel: "border-blue-500/20 bg-blue-500/[0.07]",
+      icon: "bg-blue-500/12 text-blue-600 dark:text-blue-300",
+    },
+    warn: {
+      panel: "border-amber-500/25 bg-amber-500/[0.07]",
+      icon: "bg-amber-500/12 text-amber-700 dark:text-amber-300",
+    },
+    fail: {
+      panel: "border-red-500/25 bg-red-500/[0.07]",
+      icon: "bg-red-500/12 text-red-700 dark:text-red-300",
+    },
   };
+  const style = tones[tone];
   return (
-    <div className={cn("rounded-xl p-3.5 text-xs leading-relaxed ring-1", tones[tone])}>
-      {title && <div className="mb-1 text-sm font-semibold">{title}</div>}
-      {children}
+    <div className={cn("flex gap-3 rounded-2xl border p-4", style.panel)}>
+      <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl", style.icon)}>
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          {tone === "info" ? (
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 16v-4m0-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          ) : tone === "warn" ? (
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.3 3.7L2.6 17a2 2 0 001.7 3h15.4a2 2 0 001.7-3L13.7 3.7a2 2 0 00-3.4 0z" />
+          ) : (
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 4h.01M10.3 3.7L2.6 17a2 2 0 001.7 3h15.4a2 2 0 001.7-3L13.7 3.7a2 2 0 00-3.4 0z" />
+          )}
+        </svg>
+      </div>
+      <div className="min-w-0 pt-0.5 text-xs leading-relaxed text-slate-600 dark:text-[rgb(var(--text-secondary))]">
+        {title && <div className="mb-1 text-sm font-semibold text-slate-900 dark:text-[rgb(var(--text))]">{title}</div>}
+        {children}
+      </div>
     </div>
   );
 }

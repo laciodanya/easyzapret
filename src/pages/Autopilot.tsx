@@ -247,9 +247,13 @@ export function AutopilotPage() {
         </FieldRow>
       </Card>
 
-      <Note tone="info">{t("autopilot.serviceNote")}</Note>
+      <Note tone="info" title={t("autopilot.serviceNoteTitle")}>
+        {t("autopilot.serviceNote")}
+      </Note>
       {ap.switchMode === "best_by_tests" && (
-        <Note tone="warn">{t("autopilot.bestByTestsNote")}</Note>
+        <Note tone="warn" title={t("autopilot.bestByTestsNoteTitle")}>
+          {t("autopilot.bestByTestsNote")}
+        </Note>
       )}
     </div>
   );

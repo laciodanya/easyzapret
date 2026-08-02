@@ -270,7 +270,7 @@ export function SettingsPage() {
         </FieldRow>
       </Card>
 
-      <div className="space-y-3">
+      <div className="grid gap-3 md:grid-cols-2">
         <Note tone="info" title={t("settings.secureDns")}>
           {t("settings.secureDnsText")}
         </Note>
@@ -280,55 +280,57 @@ export function SettingsPage() {
         <Note tone="fail" title={t("settings.fakeRepos")}>
           {t("settings.fakeReposText")}
         </Note>
-        <Note tone={appUpdate?.updateAvailable ? "warn" : "info"} title={t("settings.about")}>
-          {t("settings.aboutText", { version: appInfo?.version ?? "0.3.0" })}{" "}
-          <button
-            className="underline"
-            onClick={() => openUrl("https://github.com/Flowseal/zapret-discord-youtube").catch(() => {})}
-          >
-            zapret-discord-youtube
-          </button>
-          {" · "}
-          <button
-            className="underline"
-            onClick={() => openUrl("https://github.com/Flowseal/tg-ws-proxy").catch(() => {})}
-          >
-            tg-ws-proxy
-          </button>
-          <div className="mt-2">
-            {appUpdate?.updateAvailable ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium text-amber-600 dark:text-amber-400">
-                  {t("settings.appUpdateAvailable", { version: appUpdate.latest })}
-                </span>
-                <Button
-                  variant="primary"
-                  disabled={appBusy}
-                  onClick={() => onInstallAppUpdate()}
-                >
-                  {appBusy ? <Spinner /> : null}
-                  {appBusy && appProgress != null
-                    ? t("settings.installingUpdate", { percent: appProgress })
-                    : t("settings.installUpdate")}
-                </Button>
-                {appUpdate.releaseUrl && (
-                  <button
-                    className="text-sm underline"
+        <div className="md:col-span-2">
+          <Note tone={appUpdate?.updateAvailable ? "warn" : "info"} title={t("settings.about")}>
+            {t("settings.aboutText", { version: appInfo?.version ?? "0.4.0" })}{" "}
+            <button
+              className="underline"
+              onClick={() => openUrl("https://github.com/Flowseal/zapret-discord-youtube").catch(() => {})}
+            >
+              zapret-discord-youtube
+            </button>
+            {" · "}
+            <button
+              className="underline"
+              onClick={() => openUrl("https://github.com/Flowseal/tg-ws-proxy").catch(() => {})}
+            >
+              tg-ws-proxy
+            </button>
+            <div className="mt-2">
+              {appUpdate?.updateAvailable ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-amber-600 dark:text-amber-400">
+                    {t("settings.appUpdateAvailable", { version: appUpdate.latest })}
+                  </span>
+                  <Button
+                    variant="primary"
                     disabled={appBusy}
-                    onClick={() => openUrl(appUpdate.releaseUrl!).catch(() => {})}
+                    onClick={() => onInstallAppUpdate()}
                   >
-                    {t("settings.downloadUpdate")}
-                  </button>
-                )}
-              </div>
-            ) : appUpdate?.latest ? (
-              <span className="text-slate-400">{t("settings.appUpToDate")}</span>
-            ) : null}
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              {t("settings.appUpdateNote")}
-            </p>
-          </div>
-        </Note>
+                    {appBusy ? <Spinner /> : null}
+                    {appBusy && appProgress != null
+                      ? t("settings.installingUpdate", { percent: appProgress })
+                      : t("settings.installUpdate")}
+                  </Button>
+                  {appUpdate.releaseUrl && (
+                    <button
+                      className="text-sm underline"
+                      disabled={appBusy}
+                      onClick={() => openUrl(appUpdate.releaseUrl!).catch(() => {})}
+                    >
+                      {t("settings.downloadUpdate")}
+                    </button>
+                  )}
+                </div>
+              ) : appUpdate?.latest ? (
+                <span className="text-slate-400">{t("settings.appUpToDate")}</span>
+              ) : null}
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                {t("settings.appUpdateNote")}
+              </p>
+            </div>
+          </Note>
+        </div>
       </div>
 
       <Modal

@@ -48,7 +48,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUxOEIwMzhCNTVCQUJCQTAKUldTZ3U3cFZpd09MVVV1b0N0Y3VPTlBma0FFZVc1c3lZZ21xaU53ZVJRcFl4YytXY3ZEZkkvQ0kK",
       "endpoints": [
-        "https://github.com/danyalacio/easyzapret/releases/latest/download/latest.json"
+        "https://github.com/laciodanya/easyzapret/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

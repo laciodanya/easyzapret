@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { api } from "./api";
 import i18n, { systemLanguage } from "../i18n";
 import { toast } from "./toast";
+import { getStatus } from "./status";
 import type { TFunction } from "i18next";
 import type {
   AppInfo,
@@ -29,7 +30,6 @@ export type Page =
 export type ZapretTab = "service" | "tests" | "lists";
 
 const THEME_KEY = "easyzapret-theme";
-let statusInFlight = false;
 
 interface AppStore {
   page: Page;
@@ -187,15 +187,11 @@ export const useStore = create<AppStore>((set, get) => ({
   },
 
   refreshStatus: async () => {
-    if (statusInFlight) return;
-    statusInFlight = true;
     try {
-      const status = await api.getStatus();
+      const status = await getStatus();
       set({ status });
     } catch {
       /* backend busy */
-    } finally {
-      statusInFlight = false;
     }
   },
 

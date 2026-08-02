@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { errText } from "../lib/errors";
 import { toast } from "../lib/toast";
 import { useStore } from "../lib/store";
+import { waitForStatus } from "../lib/status";
 import type { WarpStatus } from "../lib/types";
 import {
   Badge,
@@ -33,7 +34,7 @@ export function WarpPage() {
   const { status, refreshStatus } = useStore();
 
   const [details, setDetails] = useState<WarpStatus | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [action, setAction] = useState<"starting" | "stopping" | null>(null);
   const [modeBusy, setModeBusy] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -61,19 +62,26 @@ export function WarpPage() {
       toast(t("warp.needZapret"), "fail");
       return;
     }
-    setBusy(true);
+    setAction(value ? "starting" : "stopping");
     try {
       if (value) {
         await api.warpConnect();
-        await new Promise((r) => setTimeout(r, 1500));
       } else {
         await api.warpDisconnect();
       }
-      await Promise.all([refreshStatus(), loadDetails()]);
+      const ready = await waitForStatus(
+        (next) => next.warp.connected === value,
+        (next) => useStore.setState({ status: next }),
+        40_000,
+      );
+      if (!ready) {
+        toast(t(value ? "home.startTimeout" : "home.stopTimeout"), "info");
+      }
+      await loadDetails();
     } catch (e) {
       toast(errText(t, e), "fail");
     } finally {
-      setBusy(false);
+      setAction(null);
     }
   }
 
@@ -134,12 +142,18 @@ export function WarpPage() {
               }
             >
               <div className="flex items-center gap-3">
-                <Badge tone={connected ? "ok" : "off"}>
-                  {connected ? t("warp.connected") : t("warp.disconnected")}
+                <Badge tone={action ? "warn" : connected ? "ok" : "off"}>
+                  {action === "starting"
+                    ? t("home.statusStarting")
+                    : action === "stopping"
+                      ? t("home.statusStopping")
+                      : connected
+                        ? t("warp.connected")
+                        : t("warp.disconnected")}
                 </Badge>
                 <Switch
-                  checked={connected}
-                  disabled={busy || (!connected && !zapretOn)}
+                  checked={action === "starting" || (action !== "stopping" && connected)}
+                  disabled={action !== null || (!connected && !zapretOn)}
                   onChange={toggle}
                 />
               </div>
@@ -180,9 +194,11 @@ export function WarpPage() {
             </FieldRow>
           </Card>
 
-          <div className="space-y-3">
-            <Note tone="info">{t("warp.dependencyNote")}</Note>
-            <Note tone="warn" title={t("common.details")}>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Note tone="info" title={t("warp.worksTogetherTitle")}>
+              {t("warp.dependencyNote")}
+            </Note>
+            <Note tone="warn" title={t("warp.connectionTipsTitle")}>
               {t("warp.conflictNote")}
             </Note>
           </div>

@@ -202,7 +202,11 @@ export function TestsPage({ embedded }: { embedded?: boolean } = {}) {
           </div>
         )}
         {!serviceInstalled && !running && (
-          <p className="mt-3 text-xs text-slate-400">{t("tests.warnStops")}</p>
+          <div className="mt-3">
+            <Note tone="info" title={t("tests.beforeRunTitle")}>
+              {t("tests.warnStops")}
+            </Note>
+          </div>
         )}
 
         {progress && (

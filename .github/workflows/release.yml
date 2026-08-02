@@ -128,7 +128,7 @@ jobs:
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
           EXE_NAME=$(basename "$EXE")
           SIG_CONTENT=$(tr -d '\n\r' < "$SIG")
-          URL="https://github.com/danyalacio/easyzapret/releases/download/${RELEASE_TAG}/${EXE_NAME}"
+          URL="https://github.com/laciodanya/easyzapret/releases/download/${RELEASE_TAG}/${EXE_NAME}"
           export VERSION SIG_CONTENT URL RELEASE_TAG
           node <<'NODE'
           const fs = require("fs");

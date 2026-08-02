@@ -1,7 +1,7 @@
 export default {
   app: {
     name: "EasyZapret",
-    tagline: "Обход блокировок без консоли",
+    tagline: "Zapret без консоли и ручной настройки",
   },
   nav: {
     home: "Главная",
@@ -64,18 +64,21 @@ export default {
   },
   home: {
     zapretTitle: "Zapret",
-    zapretDesc: "Обход DPI для Discord, YouTube и других сервисов",
+    zapretDesc: "Открывает доступ к Discord, YouTube и другим сервисам",
     tgTitle: "Telegram Proxy",
-    tgDesc: "Локальный MTProto-прокси (tg-ws-proxy) для Telegram Desktop",
+    tgDesc: "Локальный прокси для стабильной работы Telegram Desktop",
     warpTitle: "Cloudflare WARP",
-    warpDesc: "Туннель Cloudflare поверх Zapret (работает только при включённом Zapret)",
+    warpDesc: "Защищённый туннель Cloudflare, который работает вместе с Zapret",
     strategy: "Стратегия",
     noStrategy: "Стратегия не выбрана",
     viaService: "Работает как служба Windows",
     statusConnected: "Подключено",
     statusDisconnected: "Отключено",
-    statusStarting: "Запуск…",
+    statusStarting: "Запускается…",
+    statusStopping: "Останавливается…",
     statusError: "Ошибка",
+    startTimeout: "Запуск занимает больше времени, чем обычно. Не нажимайте переключатель повторно — статус обновится автоматически.",
+    stopTimeout: "Остановка занимает больше времени, чем обычно. Подождите немного — статус обновится автоматически.",
     port: "Порт",
     lastUpdateCheck: "Проверка обновлений: {{result}}",
     updatesAvailable: "Доступны обновления!",
@@ -92,7 +95,7 @@ export default {
   },
   zapret: {
     title: "Zapret",
-    description: "Сервис, тесты и пользовательские списки — в одном разделе.",
+    description: "Запуск службы, проверка стратегий и свои списки — всё в одном месте.",
     tabs: {
       service: "Сервис",
       tests: "Тесты",
@@ -102,7 +105,7 @@ export default {
   autopilot: {
     title: "Автопилот",
     description:
-      "Фоновые проверки Discord, YouTube и других целей. При падении доступности EasyZapret может переключать стратегии и при необходимости включать WARP.",
+      "Следит за доступностью сервисов и сам меняет стратегию, если текущая перестала работать.",
     enabled: "Включить автопилот",
     enabledDesc: "Периодические проверки, пока приложение открыто.",
     health: "Доступность",
@@ -129,7 +132,8 @@ export default {
     maxTestStrategies: "Сколько стратегий тестировать",
     maxTestStrategiesDesc: "Сколько кандидатов прогнать перед выбором лучшей (больше — дольше).",
     bestByTestsNote:
-      "Режим «Лучшая по тестам» кратковременно запускает каждую кандидатную стратегию — возможен короткий перерыв в работе. Интерфейс остаётся отзывчивым.",
+      "Автопилот по очереди проверит выбранные стратегии. На это время соединение может ненадолго прерваться.",
+    bestByTestsNoteTitle: "Как проходит проверка",
     policies: {
       stability: "Стабильность",
       speed: "Скорость",
@@ -149,7 +153,8 @@ export default {
     notifySwitch: "Уведомлять о смене стратегии",
     notifyDegraded: "Уведомлять о падении доступности",
     serviceNote:
-      "Автопилот не может менять стратегию, пока установлена служба Windows zapret — сначала удалите службу на вкладке «Сервис».",
+      "При установленной службе Windows стратегией управляет сама служба. Чтобы автопилот мог её менять, удалите службу на вкладке «Сервис».",
+    serviceNoteTitle: "Автопилот и служба Windows",
     toastSwitch: "Автопилот: {{from}} → {{to}}",
     toastDegraded: "Автопилот: доступность упала до {{percent}}%",
   },
@@ -158,13 +163,13 @@ export default {
     intro: "Кратко о главном в этом релизе:",
     gotIt: "Понятно",
     itemAutopilotFix:
-      "Автопилот больше не подвешивает интерфейс — проверки и смена стратегии идут в фоне, опрос статуса облегчён.",
+      "Автопилот больше не подвешивает интерфейс - проверки и смена стратегии идут в фоне, опрос статуса облегчён.",
     itemAutostart:
       "Автозагрузка с Windows и автозапуск Zapret → WARP → Telegram Proxy с жёстким порядком.",
     itemStartup:
       "Быстрый старт: тёмная тема сразу при загрузке, экран-заглушка вместо белого экрана.",
     itemTheme:
-      "Amethyst — единственная тёмная тема. Старая «тёмная» убрана, системная тёмная теперь Amethyst.",
+      "Обновленная темная тема",
   },
   setup: {
     title: "Первоначальная настройка",
@@ -265,7 +270,7 @@ export default {
   },
   tests: {
     title: "Тесты",
-    description: "Проверка доступности сервисов с разными стратегиями — аналог «Run Tests» из service.bat.",
+    description: "Сравните стратегии и выберите ту, которая лучше работает на вашем подключении.",
     mode: "Тип тестов",
     standard: "Стандартные (HTTP/ping)",
     dpi: "DPI-чекеры (TCP 16-20)",
@@ -287,7 +292,8 @@ export default {
     statusSkipped: "Пропущено",
     logHint: "Полный лог: C:\\EasyZapret\\logs\\tests.log",
     warnService: "Тесты нельзя запускать при установленной службе zapret.",
-    warnStops: "На время тестов запущенный zapret будет перезапущен с тестируемыми конфигурациями.",
+    beforeRunTitle: "Что произойдёт во время теста",
+    warnStops: "EasyZapret будет ненадолго перезапускать Zapret с каждой выбранной стратегией. После теста можно сразу применить лучший результат.",
   },
   lists: {
     title: "Списки",
@@ -304,7 +310,7 @@ export default {
   telegram: {
     title: "Telegram Proxy",
     description:
-      "tg-ws-proxy от FlowSeal — локальный MTProto-прокси, который туннелирует трафик Telegram через WebSocket. Работает независимо от Zapret.",
+      "Локальный прокси для Telegram Desktop. Можно использовать отдельно от Zapret.",
     server: "Сервер",
     port: "Порт",
     secret: "Secret",
@@ -314,14 +320,16 @@ export default {
     copyLink: "Скопировать ссылку",
     notInstalled: "tg-ws-proxy не установлен.",
     installNow: "Скачать tg-ws-proxy",
-    trayNote: "TgWsProxy запускается со своим значком в трее — это нормально.",
+    trayTitle: "Значок в трее",
+    trayNote: "После запуска TgWsProxy добавит собственный значок рядом с часами. Закрывать его не нужно.",
+    mediaHelpTitle: "Если не загружаются медиа",
     mediaHint:
-      "Не грузятся фото/видео? В настройках прокси Telegram удалите все записи DC → IP, кроме 4:149.154.167.220. Если не помогло — полностью очистите этот список.",
+      "Откройте настройки прокси в Telegram и удалите записи DC → IP, оставив только 4:149.154.167.220. Если не поможет — очистите список полностью.",
   },
   warp: {
     title: "Cloudflare WARP",
     description:
-      "WARP туннелирует трафик через Cloudflare. В связке с Zapret помогает там, где WARP в одиночку заблокирован — поэтому включается только при работающем Zapret.",
+      "Защищённый туннель Cloudflare. EasyZapret запускает его поверх Zapret, чтобы соединение оставалось доступным.",
     notInstalledTitle: "Cloudflare WARP не установлен",
     notInstalledText:
       "Установите официальный клиент Cloudflare WARP (1.1.1.1). EasyZapret управляет им через warp-cli — дополнительная настройка не нужна.",
@@ -344,9 +352,11 @@ export default {
     resetDone: "Ключи WARP сброшены",
     needZapret: "WARP включается только при работающем Zapret. Сначала включите Zapret.",
     dependencyNote:
-      "WARP запускается только вместе с Zapret и автоматически отключается при его выключении.",
+      "Сначала запускается Zapret, затем WARP. Если выключить Zapret, WARP отключится автоматически.",
+    worksTogetherTitle: "Работают вместе",
+    connectionTipsTitle: "Если соединение нестабильно",
     conflictNote:
-      "WARP и Zapret одновременно меняют сетевой трафик. Если соединение нестабильно — попробуйте режим WARP+DoH или переподключите WARP.",
+      "Попробуйте режим WARP + DoH. Если это не помогло, отключите WARP, подождите несколько секунд и включите снова.",
   },
   logs: {
     title: "Логи",
@@ -370,11 +380,11 @@ export default {
     themePurple: "Amethyst",
     themeSystem: "Системная",
     autostartTitle: "Автозагрузка и автозапуск",
-    autostartDesc: "Что запускать при входе в Windows и при открытии EasyZapret.",
+    autostartDesc: "Выберите, что EasyZapret должен включать сам после входа в Windows.",
     launchAtLogin: "Запускать с Windows",
-    launchAtLoginDesc: "Добавить EasyZapret в автозагрузку (реестр Run).",
+    launchAtLoginDesc: "EasyZapret откроется автоматически после входа в Windows.",
     startMinimized: "Сворачивать в трей",
-    startMinimizedDesc: "При автозапуске окно не показывать — только значок в трее.",
+    startMinimizedDesc: "Не показывать главное окно, пока вы сами не откроете его из трея.",
     autoStartZapret: "Автозапуск Zapret",
     autoStartZapretDesc: "Включать выбранную стратегию при старте приложения.",
     autoStartWarp: "Автозапуск WARP",
@@ -382,7 +392,7 @@ export default {
     autoStartTg: "Автозапуск Telegram Proxy",
     autoStartTgDesc: "Запускать tg-ws-proxy при старте приложения.",
     autostartOrderNote:
-      "Порядок жёсткий: сначала Zapret, затем WARP. Если включён WARP — Zapret запустится автоматически.",
+      "Если выбран WARP, EasyZapret сначала дождётся запуска Zapret и только потом подключит WARP.",
     dataDir: "Папка данных",
     dataDirNote: "Фиксированный путь — без кириллицы и пробелов, как требует zapret.",
     components: "Компоненты",
@@ -395,13 +405,13 @@ export default {
     openRelease: "Страница релиза",
     secureDns: "Защищённый DNS",
     secureDnsText:
-      "Для стабильной работы обхода настройте защищённый DNS (DNS-over-HTTPS): в Windows 11 — Параметры → Сеть и интернет → свойства подключения → Назначение DNS-сервера → вручную, укажите 1.1.1.1 / 8.8.8.8 и включите шифрование. В браузере: Настройки → Конфиденциальность → Использовать защищённый DNS.",
+      "Если сайты открываются нестабильно, включите DNS-over-HTTPS в Windows или браузере. Подойдут серверы 1.1.1.1 и 8.8.8.8.",
     antivirus: "Антивирус и WinDivert",
     antivirusText:
-      "Zapret использует драйвер WinDivert для перехвата трафика. Антивирусы часто помечают его как угрозу (ложное срабатывание). Если zapret не запускается или WinDivert64.sys пропадает — добавьте C:\\EasyZapret в исключения антивируса.",
+      "Zapret использует драйвер WinDivert, поэтому антивирус может удалить его по ошибке. Если Zapret перестал запускаться, добавьте C:\\EasyZapret в исключения и переустановите компонент.",
     fakeRepos: "Осторожно: фейковые репозитории",
     fakeReposText:
-      "Скачивайте zapret и tg-ws-proxy только из официальных репозиториев FlowSeal на GitHub. EasyZapret делает это автоматически и не использует сторонние зеркала.",
+      "Не скачивайте сборки Zapret из случайных источников. EasyZapret устанавливает компоненты из указанных в проекте репозиториев.",
     about: "О приложении",
     aboutText: "EasyZapret {{version}} — GUI для zapret-discord-youtube и tg-ws-proxy от FlowSeal. Спасибо FlowSeal и bol-van.",
     updatesModalTitle: "Доступны обновления",

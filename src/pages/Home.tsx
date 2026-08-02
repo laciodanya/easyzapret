@@ -3,14 +3,17 @@ import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { errText } from "../lib/errors";
 import { useStore } from "../lib/store";
+import { waitForStatus } from "../lib/status";
 import { Badge, Button, Card, Spinner, Switch } from "../components/ui";
+
+type ToggleAction = "starting" | "stopping" | null;
 
 function BigToggleCard({
   icon,
   title,
   description,
   on,
-  busy,
+  action,
   error,
   subtitle,
   disabled,
@@ -21,7 +24,7 @@ function BigToggleCard({
   title: string;
   description: string;
   on: boolean;
-  busy: boolean;
+  action: ToggleAction;
   error?: string | null;
   subtitle?: React.ReactNode;
   disabled?: boolean;
@@ -29,12 +32,16 @@ function BigToggleCard({
   footer?: React.ReactNode;
 }) {
   const { t } = useTranslation();
-  const tone = error ? "fail" : busy ? "warn" : on ? "ok" : "off";
+  const busy = action !== null;
+  const displayOn = action === "starting" || (action !== "stopping" && on);
+  const tone = error ? "fail" : busy ? "warn" : displayOn ? "ok" : "off";
   const label = error
     ? t("home.statusError")
-    : busy
+    : action === "starting"
       ? t("home.statusStarting")
-      : on
+      : action === "stopping"
+        ? t("home.statusStopping")
+      : displayOn
         ? t("home.statusConnected")
         : t("home.statusDisconnected");
 
@@ -45,7 +52,7 @@ function BigToggleCard({
           <div
             className={
               "flex h-14 w-14 items-center justify-center rounded-2xl transition-colors " +
-              (on
+              (displayOn
                 ? "bg-accent-soft text-accent"
                 : "bg-slate-100 text-slate-400 dark:bg-slate-800")
             }
@@ -60,7 +67,7 @@ function BigToggleCard({
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>
           </div>
         </div>
-        <Switch size="lg" checked={on} disabled={busy || disabled} onChange={onToggle} />
+        <Switch size="lg" checked={displayOn} disabled={busy || disabled} onChange={onToggle} />
       </div>
       {subtitle && <div className="text-sm text-slate-500 dark:text-slate-400">{subtitle}</div>}
       {error && (
@@ -75,12 +82,12 @@ function BigToggleCard({
 
 export function HomePage() {
   const { t } = useTranslation();
-  const { status, settings, components, updates, appUpdate, updatesCheckedAt, updatesError, refreshStatus, checkUpdates, setPage, updateSettings } =
+  const { status, settings, components, updates, appUpdate, updatesCheckedAt, updatesError, checkUpdates, setPage, updateSettings } =
     useStore();
 
-  const [zapretBusy, setZapretBusy] = useState(false);
-  const [tgBusy, setTgBusy] = useState(false);
-  const [warpBusy, setWarpBusy] = useState(false);
+  const [zapretAction, setZapretAction] = useState<ToggleAction>(null);
+  const [tgAction, setTgAction] = useState<ToggleAction>(null);
+  const [warpAction, setWarpAction] = useState<ToggleAction>(null);
   const [zapretError, setZapretError] = useState<string | null>(null);
   const [tgError, setTgError] = useState<string | null>(null);
   const [warpError, setWarpError] = useState<string | null>(null);
@@ -99,7 +106,7 @@ export function HomePage() {
       setPage("settings");
       return;
     }
-    setZapretBusy(true);
+    setZapretAction(value ? "starting" : "stopping");
     try {
       if (value) {
         const strategy = settings?.selectedStrategy;
@@ -111,11 +118,19 @@ export function HomePage() {
       } else {
         await api.stopZapret();
       }
-      await refreshStatus();
+      const ready = await waitForStatus(
+        (next) =>
+          value
+            ? next.zapret.running || next.zapret.serviceState === "RUNNING"
+            : !next.zapret.running && next.zapret.serviceState !== "RUNNING",
+        (next) => useStore.setState({ status: next }),
+        30_000,
+      );
+      if (!ready) setZapretError(t(value ? "home.startTimeout" : "home.stopTimeout"));
     } catch (e) {
       setZapretError(errText(t, e));
     } finally {
-      setZapretBusy(false);
+      setZapretAction(null);
     }
   }
 
@@ -126,20 +141,23 @@ export function HomePage() {
       setPage("telegram");
       return;
     }
-    setTgBusy(true);
+    setTgAction(value ? "starting" : "stopping");
     try {
       if (value) {
         await api.startTg();
-        // proxy takes a moment to spin up
-        await new Promise((r) => setTimeout(r, 1200));
       } else {
         await api.stopTg();
       }
-      await refreshStatus();
+      const ready = await waitForStatus(
+        (next) => next.tg.running === value,
+        (next) => useStore.setState({ status: next }),
+        20_000,
+      );
+      if (!ready) setTgError(t(value ? "home.startTimeout" : "home.stopTimeout"));
     } catch (e) {
       setTgError(errText(t, e));
     } finally {
-      setTgBusy(false);
+      setTgAction(null);
     }
   }
 
@@ -154,19 +172,23 @@ export function HomePage() {
       setWarpError(t("warp.needZapret"));
       return;
     }
-    setWarpBusy(true);
+    setWarpAction(value ? "starting" : "stopping");
     try {
       if (value) {
         await api.warpConnect();
-        await new Promise((r) => setTimeout(r, 1500));
       } else {
         await api.warpDisconnect();
       }
-      await refreshStatus();
+      const ready = await waitForStatus(
+        (next) => next.warp.connected === value,
+        (next) => useStore.setState({ status: next }),
+        40_000,
+      );
+      if (!ready) setWarpError(t(value ? "home.startTimeout" : "home.stopTimeout"));
     } catch (e) {
       setWarpError(errText(t, e));
     } finally {
-      setWarpBusy(false);
+      setWarpAction(null);
     }
   }
 
@@ -237,7 +259,7 @@ export function HomePage() {
         title={t("home.zapretTitle")}
         description={t("home.zapretDesc")}
         on={zapretOn}
-        busy={zapretBusy}
+        action={zapretAction}
         error={zapretError}
         disabled={!components?.zapretInstalled && !zapretOn}
         onToggle={toggleZapret}
@@ -269,7 +291,7 @@ export function HomePage() {
         title={t("home.tgTitle")}
         description={t("home.tgDesc")}
         on={!!tg?.running}
-        busy={tgBusy}
+        action={tgAction}
         error={tgError}
         disabled={!components?.tgInstalled && !tg?.running}
         onToggle={toggleTg}
@@ -301,7 +323,7 @@ export function HomePage() {
         title={t("home.warpTitle")}
         description={t("home.warpDesc")}
         on={!!warp?.connected}
-        busy={warpBusy}
+        action={warpAction}
         error={warpError}
         disabled={!warp?.installed && !warp?.connected}
         onToggle={toggleWarp}

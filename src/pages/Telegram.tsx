@@ -139,9 +139,11 @@ export function TelegramPage() {
             </div>
           </Card>
 
-          <div className="space-y-3">
-            <Note tone="info">{t("telegram.trayNote")}</Note>
-            <Note tone="warn" title={t("common.details")}>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Note tone="info" title={t("telegram.trayTitle")}>
+              {t("telegram.trayNote")}
+            </Note>
+            <Note tone="warn" title={t("telegram.mediaHelpTitle")}>
               {t("telegram.mediaHint")}
             </Note>
           </div>

@@ -1,7 +1,7 @@
 export default {
   app: {
     name: "EasyZapret",
-    tagline: "Censorship bypass without the console",
+    tagline: "Zapret without the console or manual setup",
   },
   nav: {
     home: "Home",
@@ -64,18 +64,21 @@ export default {
   },
   home: {
     zapretTitle: "Zapret",
-    zapretDesc: "DPI bypass for Discord, YouTube and other services",
+    zapretDesc: "Restores access to Discord, YouTube and other services",
     tgTitle: "Telegram Proxy",
-    tgDesc: "Local MTProto proxy (tg-ws-proxy) for Telegram Desktop",
+    tgDesc: "A local proxy for a more reliable Telegram Desktop connection",
     warpTitle: "Cloudflare WARP",
-    warpDesc: "Cloudflare tunnel on top of Zapret (runs only while Zapret is on)",
+    warpDesc: "A secure Cloudflare tunnel that works together with Zapret",
     strategy: "Strategy",
     noStrategy: "No strategy selected",
     viaService: "Running as a Windows service",
     statusConnected: "Connected",
     statusDisconnected: "Disconnected",
     statusStarting: "Starting…",
+    statusStopping: "Stopping…",
     statusError: "Error",
+    startTimeout: "This is taking longer than usual. Do not press the switch again — the status will update automatically.",
+    stopTimeout: "Stopping is taking longer than usual. Give it a moment and the status will update automatically.",
     port: "Port",
     lastUpdateCheck: "Update check: {{result}}",
     updatesAvailable: "Updates available!",
@@ -92,7 +95,7 @@ export default {
   },
   zapret: {
     title: "Zapret",
-    description: "Service, connectivity tests and user lists — all in one place.",
+    description: "Manage the service, compare strategies and edit your lists in one place.",
     tabs: {
       service: "Service",
       tests: "Tests",
@@ -102,7 +105,7 @@ export default {
   autopilot: {
     title: "Autopilot",
     description:
-      "Background availability checks for Discord, YouTube and other targets. When access quality drops, EasyZapret can rotate strategies and optionally enable WARP.",
+      "Keeps an eye on your connection and changes strategy when the current one stops working.",
     enabled: "Enable Autopilot",
     enabledDesc: "Runs checks on a schedule while the app is open.",
     health: "Availability",
@@ -128,7 +131,8 @@ export default {
     maxTestStrategies: "Strategies to test",
     maxTestStrategiesDesc: "How many candidates to benchmark before picking the best (slower with more).",
     bestByTestsNote:
-      "Best by tests briefly starts each candidate strategy — expect a short interruption while probing.",
+      "Autopilot checks each selected strategy in turn. Your connection may briefly drop during the test.",
+    bestByTestsNoteTitle: "What the test does",
     policies: {
       stability: "Stability",
       speed: "Speed",
@@ -148,7 +152,8 @@ export default {
     notifySwitch: "Notify on strategy switch",
     notifyDegraded: "Notify on low availability",
     serviceNote:
-      "Autopilot cannot rotate strategies while the Windows zapret service is installed — remove the service on the Service tab first.",
+      "When the Windows service is installed, it controls the strategy. Remove it on the Service tab if you want Autopilot to switch strategies.",
+    serviceNoteTitle: "Autopilot and the Windows service",
     toastSwitch: "Autopilot: {{from}} → {{to}}",
     toastDegraded: "Autopilot: availability dropped to {{percent}}%",
   },
@@ -264,7 +269,7 @@ export default {
   },
   tests: {
     title: "Tests",
-    description: "Service availability checks across strategies — the \"Run Tests\" equivalent from service.bat.",
+    description: "Compare strategies and find the one that works best on your connection.",
     mode: "Test type",
     standard: "Standard (HTTP/ping)",
     dpi: "DPI checkers (TCP 16-20)",
@@ -286,7 +291,8 @@ export default {
     statusSkipped: "Skipped",
     logHint: "Full log: C:\\EasyZapret\\logs\\tests.log",
     warnService: "Tests cannot run while the zapret service is installed.",
-    warnStops: "While testing, the running zapret will be restarted with the configurations under test.",
+    beforeRunTitle: "What happens during a test",
+    warnStops: "EasyZapret briefly restarts Zapret with each selected strategy. You can apply the best result when the test finishes.",
   },
   lists: {
     title: "Lists",
@@ -303,7 +309,7 @@ export default {
   telegram: {
     title: "Telegram Proxy",
     description:
-      "FlowSeal's tg-ws-proxy — a local MTProto proxy that tunnels Telegram traffic over WebSocket. Works independently from Zapret.",
+      "A local proxy for Telegram Desktop. You can use it without Zapret.",
     server: "Server",
     port: "Port",
     secret: "Secret",
@@ -313,14 +319,16 @@ export default {
     copyLink: "Copy link",
     notInstalled: "tg-ws-proxy is not installed.",
     installNow: "Download tg-ws-proxy",
-    trayNote: "TgWsProxy starts with its own tray icon — that is expected.",
+    trayTitle: "Tray icon",
+    trayNote: "TgWsProxy adds its own icon next to the clock after it starts. Leave it running.",
+    mediaHelpTitle: "If media does not load",
     mediaHint:
-      "Photos/videos not loading? In Telegram's proxy settings remove all DC → IP entries except 4:149.154.167.220. If that does not help, clear the list entirely.",
+      "Open Telegram proxy settings and remove the DC → IP entries, keeping only 4:149.154.167.220. If that does not help, clear the list.",
   },
   warp: {
     title: "Cloudflare WARP",
     description:
-      "WARP tunnels your traffic through Cloudflare. Paired with Zapret it works in places where WARP alone is blocked — so it only turns on while Zapret is running.",
+      "A secure Cloudflare tunnel. EasyZapret runs it on top of Zapret to keep the connection available.",
     notInstalledTitle: "Cloudflare WARP is not installed",
     notInstalledText:
       "Install the official Cloudflare WARP (1.1.1.1) client. EasyZapret drives it through warp-cli — no extra setup required.",
@@ -343,9 +351,11 @@ export default {
     resetDone: "WARP keys reset",
     needZapret: "WARP only turns on while Zapret is running. Turn on Zapret first.",
     dependencyNote:
-      "WARP starts only together with Zapret and auto-disconnects when Zapret is turned off.",
+      "Zapret starts first, then WARP. Turning Zapret off also disconnects WARP.",
+    worksTogetherTitle: "Designed to work together",
+    connectionTipsTitle: "If the connection is unstable",
     conflictNote:
-      "WARP and Zapret both reshape network traffic. If the connection is unstable, try WARP+DoH mode or reconnect WARP.",
+      "Try WARP + DoH mode. If that does not help, turn WARP off, wait a few seconds and connect again.",
   },
   logs: {
     title: "Logs",
@@ -369,11 +379,11 @@ export default {
     themePurple: "Amethyst",
     themeSystem: "System",
     autostartTitle: "Autostart & boot",
-    autostartDesc: "What to launch at Windows login and when EasyZapret opens.",
+    autostartDesc: "Choose what EasyZapret should turn on after you sign in to Windows.",
     launchAtLogin: "Launch with Windows",
-    launchAtLoginDesc: "Add EasyZapret to the Windows Run key.",
+    launchAtLoginDesc: "Open EasyZapret automatically after you sign in to Windows.",
     startMinimized: "Start minimized to tray",
-    startMinimizedDesc: "Hide the main window on autostart — tray icon only.",
+    startMinimizedDesc: "Keep the main window hidden until you open it from the tray.",
     autoStartZapret: "Auto-start Zapret",
     autoStartZapretDesc: "Start the selected strategy when the app opens.",
     autoStartWarp: "Auto-start WARP",
@@ -381,7 +391,7 @@ export default {
     autoStartTg: "Auto-start Telegram Proxy",
     autoStartTgDesc: "Launch tg-ws-proxy when the app opens.",
     autostartOrderNote:
-      "Order is fixed: Zapret first, then WARP. Enabling WARP also enables Zapret autostart.",
+      "If WARP is selected, EasyZapret waits for Zapret to start before connecting WARP.",
     dataDir: "Data folder",
     dataDirNote: "Fixed path — no cyrillic or spaces, as zapret requires.",
     components: "Components",
@@ -394,13 +404,13 @@ export default {
     openRelease: "Release page",
     secureDns: "Secure DNS",
     secureDnsText:
-      "For a stable bypass configure secure DNS (DNS-over-HTTPS): on Windows 11 — Settings → Network & internet → connection properties → DNS server assignment → manual, set 1.1.1.1 / 8.8.8.8 and enable encryption. In your browser: Settings → Privacy → Use secure DNS.",
+      "If sites open unreliably, enable DNS-over-HTTPS in Windows or your browser. 1.1.1.1 and 8.8.8.8 are good choices.",
     antivirus: "Antivirus & WinDivert",
     antivirusText:
-      "Zapret uses the WinDivert driver to intercept traffic. Antivirus software often flags it as a threat (false positive). If zapret fails to start or WinDivert64.sys disappears — add C:\\EasyZapret to your antivirus exclusions.",
+      "Zapret uses the WinDivert driver, which antivirus software may remove by mistake. If Zapret stops starting, exclude C:\\EasyZapret and reinstall the component.",
     fakeRepos: "Beware: fake repositories",
     fakeReposText:
-      "Download zapret and tg-ws-proxy only from FlowSeal's official GitHub repositories. EasyZapret does this automatically and never uses third-party mirrors.",
+      "Avoid random Zapret builds. EasyZapret installs components from the repositories listed by the project.",
     about: "About",
     aboutText: "EasyZapret {{version}} — a GUI for FlowSeal's zapret-discord-youtube and tg-ws-proxy. Thanks to FlowSeal and bol-van.",
     updatesModalTitle: "Updates available",

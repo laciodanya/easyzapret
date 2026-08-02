@@ -9,7 +9,7 @@ use crate::{logs, paths, settings};
 
 pub const ZAPRET_REPO: &str = "Flowseal/zapret-discord-youtube";
 pub const TG_REPO: &str = "Flowseal/tg-ws-proxy";
-pub const APP_REPO: &str = "danyalacio/easyzapret";
+pub const APP_REPO: &str = "laciodanya/easyzapret";
 
 /// User lists and flags that must survive a zapret update.
 const ZAPRET_USER_FILES: &[&str] = &[

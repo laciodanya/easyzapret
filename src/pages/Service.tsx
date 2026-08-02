@@ -18,12 +18,15 @@ import {
   StatusDot,
   Switch,
 } from "../components/ui";
-import type { DiagItem, HostsCheck, ServiceSettings } from "../lib/types";
+import type { ActiveFakesStatus, DiagItem, HostsCheck, ServiceSettings } from "../lib/types";
 
 export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
   const { t } = useTranslation();
   const { status, settings, refreshStatus } = useStore();
   const [svc, setSvc] = useState<ServiceSettings | null>(null);
+  const [fakes, setFakes] = useState<ActiveFakesStatus | null>(null);
+  const [discordPick, setDiscordPick] = useState("");
+  const [gamePick, setGamePick] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmDiscord, setConfirmDiscord] = useState(false);
@@ -40,8 +43,20 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
     }
   }
 
+  async function loadFakes() {
+    try {
+      const next = await api.getActiveFakes();
+      setFakes(next);
+      setDiscordPick(next.discordCurrent ?? next.files[0] ?? "");
+      setGamePick(next.gameCurrent ?? next.files[0] ?? "");
+    } catch {
+      setFakes(null);
+    }
+  }
+
   useEffect(() => {
     loadServiceSettings();
+    loadFakes();
   }, []);
 
   async function run(name: string, fn: () => Promise<void>, successMsg?: string) {
@@ -114,7 +129,7 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
       </Card>
 
       {/* Install / remove service */}
-      <Card className="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+      <Card className="mb-4 divide-y divide-[rgb(var(--border)/0.45)]">
         <FieldRow
           title={t("service.install")}
           description={`${t("service.installDesc")} (${settings?.selectedStrategy?.replace(/\.bat$/i, "") ?? "—"})`}
@@ -139,7 +154,7 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
       </Card>
 
       {/* Settings (game filter / ipset / auto update) */}
-      <Card className="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+      <Card className="mb-4 divide-y divide-[rgb(var(--border)/0.45)]">
         <FieldRow title={t("service.gameFilter")} description={t("service.gameFilterDesc")}>
           <Segmented
             value={svc?.gameFilterMode ?? "off"}
@@ -174,8 +189,71 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
         </FieldRow>
       </Card>
 
+      {/* Active fakes (FlowSeal service.bat #7) */}
+      <Card className="mb-4">
+        <div className="mb-1 text-sm font-bold text-[rgb(var(--text))]">{t("service.fakesTitle")}</div>
+        <p className="mb-4 text-xs leading-relaxed text-[rgb(var(--text-secondary))]">
+          {t("service.fakesDesc")}
+        </p>
+        {!fakes || fakes.files.length === 0 ? (
+          <Note tone="info">{t("service.fakesEmpty")}</Note>
+        ) : (
+          <div className="space-y-3">
+            <FakeRow
+              label={t("service.fakeDiscord")}
+              current={fakes.discordCurrent}
+              value={discordPick}
+              files={fakes.files}
+              busy={busy === "fake-discord"}
+              disabled={busy !== null}
+              onChange={setDiscordPick}
+              onApply={() =>
+                run(
+                  "fake-discord",
+                  async () => {
+                    const next = await api.setActiveFake("discord", discordPick);
+                    setFakes(next);
+                    setDiscordPick(next.discordCurrent ?? discordPick);
+                    setGamePick(next.gameCurrent ?? gamePick);
+                  },
+                  t("service.fakesApplied"),
+                )
+              }
+              applyLabel={t("common.apply")}
+              currentLabel={t("service.fakeCurrent")}
+              unknownLabel={t("service.fakeUnknown")}
+            />
+            <FakeRow
+              label={t("service.fakeGame")}
+              current={fakes.gameCurrent}
+              value={gamePick}
+              files={fakes.files}
+              busy={busy === "fake-game"}
+              disabled={busy !== null}
+              onChange={setGamePick}
+              onApply={() =>
+                run(
+                  "fake-game",
+                  async () => {
+                    const next = await api.setActiveFake("game", gamePick);
+                    setFakes(next);
+                    setDiscordPick(next.discordCurrent ?? discordPick);
+                    setGamePick(next.gameCurrent ?? gamePick);
+                  },
+                  t("service.fakesApplied"),
+                )
+              }
+              applyLabel={t("common.apply")}
+              currentLabel={t("service.fakeCurrent")}
+              unknownLabel={t("service.fakeUnknown")}
+            />
+            <p className="text-[11px] text-[rgb(var(--text-secondary))]">{t("service.fakesRestartHint")}</p>
+          </div>
+        )}
+      </Card>
+
       {/* Updates */}
-      <Card className="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+      <Card className="mb-4 divide-y divide-[rgb(var(--border)/0.45)]">
         <FieldRow title={t("service.updateIpset")} description={t("service.updateIpsetDesc")}>
           <Button
             disabled={busy !== null}
@@ -326,6 +404,61 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
       >
         {t("service.clearDiscordConfirm")}
       </Modal>
+    </div>
+  );
+}
+
+function FakeRow({
+  label,
+  current,
+  value,
+  files,
+  busy,
+  disabled,
+  onChange,
+  onApply,
+  applyLabel,
+  currentLabel,
+  unknownLabel,
+}: {
+  label: string;
+  current: string | null;
+  value: string;
+  files: string[];
+  busy: boolean;
+  disabled: boolean;
+  onChange: (v: string) => void;
+  onApply: () => void;
+  applyLabel: string;
+  currentLabel: string;
+  unknownLabel: string;
+}) {
+  return (
+    <div className="rounded-2xl bg-[rgb(var(--surface))] px-3.5 py-3 ring-1 ring-[rgb(var(--border)/0.45)]">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm font-semibold text-[rgb(var(--text))]">{label}</div>
+        <div className="text-[11px] text-[rgb(var(--text-secondary))]">
+          {currentLabel}: <span className="font-medium text-[rgb(var(--text))]">{current ?? unknownLabel}</span>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+          className="min-w-0 flex-1 rounded-xl border-0 bg-[rgb(var(--surface-elevated))] px-3 py-2 text-sm ring-1 ring-[rgb(var(--border)/0.55)] outline-none focus:ring-2 focus:ring-accent"
+        >
+          {files.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        <Button variant="primary" disabled={disabled || !value || value === current} onClick={onApply}>
+          {busy ? <Spinner /> : null}
+          {applyLabel}
+        </Button>
+      </div>
     </div>
   );
 }

@@ -208,7 +208,21 @@ export function Modal({
           wide ? "max-w-2xl" : "max-w-md",
         )}
       >
-        <h2 className="mb-3 text-lg font-bold tracking-tight text-slate-900 dark:text-white">{title}</h2>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">{title}</h2>
+          {onClose && (
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={onClose}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-[rgb(var(--accent)/0.1)] hover:text-[rgb(var(--text))]"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                <path d="M2 2l8 8M10 2L2 10" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
+        </div>
         <div className="text-sm text-slate-600 dark:text-slate-300">{children}</div>
         {footer && <div className="mt-5 flex justify-end gap-2">{footer}</div>}
       </div>

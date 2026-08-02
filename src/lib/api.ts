@@ -6,6 +6,7 @@ import type {
   ComponentsState,
   DiagItem,
   FullStatus,
+  ActiveFakesStatus,
   HostsCheck,
   ServiceSettings,
   Settings,
@@ -40,6 +41,9 @@ export const api = {
     invoke<void>("install_zapret_service", { strategyFile }),
   removeZapretServices: () => invoke<void>("remove_zapret_services"),
   getServiceSettings: () => invoke<ServiceSettings>("get_service_settings"),
+  getActiveFakes: () => invoke<ActiveFakesStatus>("get_active_fakes"),
+  setActiveFake: (kind: "discord" | "game", file: string) =>
+    invoke<ActiveFakesStatus>("set_active_fake", { kind, file }),
   setGameFilter: (mode: string) => invoke<void>("set_game_filter", { mode }),
   setIpsetMode: (mode: string) => invoke<void>("set_ipset_mode", { mode }),
   setAutoUpdateCheck: (enabled: boolean) => invoke<void>("set_auto_update_check", { enabled }),

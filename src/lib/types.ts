@@ -119,6 +119,12 @@ export interface ServiceSettings {
   autoUpdateCheck: boolean;
 }
 
+export interface ActiveFakesStatus {
+  files: string[];
+  discordCurrent: string | null;
+  gameCurrent: string | null;
+}
+
 export interface UpdateStatus {
   component: "zapret" | "tgproxy";
   installed: string | null;

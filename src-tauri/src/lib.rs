@@ -286,6 +286,8 @@ pub fn run() {
             zapret::service::install_zapret_service,
             zapret::service::remove_zapret_services,
             zapret::service::get_service_settings,
+            zapret::service::get_active_fakes,
+            zapret::service::set_active_fake,
             zapret::service::set_game_filter,
             zapret::service::set_ipset_mode,
             zapret::service::set_auto_update_check,

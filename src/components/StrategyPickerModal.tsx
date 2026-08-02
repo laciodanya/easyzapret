@@ -4,7 +4,7 @@ import { api } from "../lib/api";
 import { errText } from "../lib/errors";
 import { toast } from "../lib/toast";
 import { useStore } from "../lib/store";
-import { Button, Modal, Spinner, cn } from "./ui";
+import { Modal, Spinner, cn } from "./ui";
 
 type StrategyGroup = "base" | "alt" | "fakeTls" | "simpleFake";
 
@@ -102,44 +102,45 @@ export function StrategyPickerModal({
         />
       </div>
       <div className="max-h-[50vh] space-y-4 overflow-y-auto pr-1">
-        {grouped.map((group) => (
-          <div key={group.id}>
-            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[rgb(var(--text-secondary))]">
-              {groupLabel(group.id)}
-            </div>
-            <div className="space-y-1">
-              {group.items.map((name) => {
-                const active = name === selected;
-                return (
-                  <button
-                    key={name}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => pick(name)}
-                    className={cn(
-                      "flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition-colors",
-                      active
-                        ? "bg-accent-soft text-accent ring-1 ring-[rgb(var(--accent)/0.25)]"
-                        : "hover:bg-[rgb(var(--accent)/0.08)]",
-                    )}
-                  >
-                    <span className="truncate font-medium">{prettyName(name)}</span>
-                    {active && <span className="text-xs font-semibold">{t("strategies.current")}</span>}
-                  </button>
-                );
-              })}
-            </div>
+        {busy && (
+          <div className="flex items-center justify-center gap-2 py-6 text-[rgb(var(--text-secondary))]">
+            <Spinner />
+            <span>{t("common.loading")}</span>
           </div>
-        ))}
-        {grouped.length === 0 && (
+        )}
+        {!busy &&
+          grouped.map((group) => (
+            <div key={group.id}>
+              <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[rgb(var(--text-secondary))]">
+                {groupLabel(group.id)}
+              </div>
+              <div className="space-y-1">
+                {group.items.map((name) => {
+                  const active = name === selected;
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => pick(name)}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition-colors",
+                        active
+                          ? "bg-accent-soft text-accent ring-1 ring-[rgb(var(--accent)/0.25)]"
+                          : "hover:bg-[rgb(var(--accent)/0.08)]",
+                      )}
+                    >
+                      <span className="truncate font-medium">{prettyName(name)}</span>
+                      {active && <span className="text-xs font-semibold">{t("strategies.current")}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        {!busy && grouped.length === 0 && (
           <div className="py-8 text-center text-sm text-[rgb(var(--text-secondary))]">{t("strategies.empty")}</div>
         )}
-      </div>
-      <div className="mt-4 flex justify-end">
-        <Button onClick={onClose} disabled={busy}>
-          {busy ? <Spinner /> : null}
-          {t("common.later")}
-        </Button>
       </div>
     </Modal>
   );

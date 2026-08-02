@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { setupAutopilotListener, useStore } from "./lib/store";
 import { BootSplash } from "./components/BootSplash";
 import { Sidebar } from "./components/Sidebar";
+import { TitleBar } from "./components/TitleBar";
 import { SetupModal } from "./components/SetupModal";
 import { UpdatesModal } from "./components/UpdatesModal";
 import { WhatsNewModal } from "./components/WhatsNewModal";
@@ -64,33 +65,45 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!ready) return <BootSplash />;
+  if (!ready) {
+    return (
+      <div className="flex h-full flex-col bg-[rgb(var(--surface))] text-[rgb(var(--text))]">
+        <TitleBar />
+        <div className="min-h-0 flex-1">
+          <BootSplash />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-full bg-[rgb(var(--surface))] text-[rgb(var(--text))]">
-      <Sidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
-        {initError && (
-          <div className="bg-amber-600/90 px-5 py-2 text-center text-sm font-medium text-white">
-            {t("errors.initFailed")}
+    <div className="flex h-full flex-col bg-[rgb(var(--surface))] text-[rgb(var(--text))]">
+      <TitleBar />
+      <div className="flex min-h-0 flex-1">
+        <Sidebar />
+        <main className="flex min-w-0 flex-1 flex-col">
+          {initError && (
+            <div className="bg-amber-600/90 px-5 py-2 text-center text-sm font-medium text-white">
+              {t("errors.initFailed")}
+            </div>
+          )}
+          {appInfo && appInfo.isWindows && !appInfo.isAdmin && (
+            <div className="bg-red-600 px-5 py-2 text-center text-sm font-semibold text-white">
+              {t("adminWarning")}
+            </div>
+          )}
+          <div className="min-h-0 flex-1 overflow-y-auto p-5 md:p-8">
+            {page === "home" && <HomePage />}
+            {page === "autopilot" && <AutopilotPage />}
+            {page === "strategies" && <StrategiesPage />}
+            {page === "zapret" && <ZapretPage />}
+            {page === "telegram" && <TelegramPage />}
+            {page === "warp" && <WarpPage />}
+            {page === "logs" && <LogsPage />}
+            {page === "settings" && <SettingsPage />}
           </div>
-        )}
-        {appInfo && appInfo.isWindows && !appInfo.isAdmin && (
-          <div className="bg-red-600 px-5 py-2 text-center text-sm font-semibold text-white">
-            {t("adminWarning")}
-          </div>
-        )}
-        <div className="min-h-0 flex-1 overflow-y-auto p-5 md:p-8">
-          {page === "home" && <HomePage />}
-          {page === "autopilot" && <AutopilotPage />}
-          {page === "strategies" && <StrategiesPage />}
-          {page === "zapret" && <ZapretPage />}
-          {page === "telegram" && <TelegramPage />}
-          {page === "warp" && <WarpPage />}
-          {page === "logs" && <LogsPage />}
-          {page === "settings" && <SettingsPage />}
-        </div>
-      </main>
+        </main>
+      </div>
       <SetupModal />
       <UpdatesModal />
       <WhatsNewModal />

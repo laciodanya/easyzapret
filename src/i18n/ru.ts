@@ -103,7 +103,7 @@ export default {
   },
   zapret: {
     title: "Zapret",
-    description: "Запуск службы, проверка стратегий и свои списки — всё в одном месте.",
+    description: "Служба, тесты стратегий и списки.",
     tabs: {
       service: "Сервис",
       tests: "Тесты",
@@ -112,8 +112,7 @@ export default {
   },
   autopilot: {
     title: "Автопилот",
-    description:
-      "Следит за доступностью сервисов и сам меняет стратегию, если текущая перестала работать.",
+    description: "Сам проверяет доступ и меняет стратегию, если что-то упало.",
     enabled: "Включить автопилот",
     enabledDesc: "Периодические проверки, пока приложение открыто.",
     health: "Доступность",
@@ -170,14 +169,14 @@ export default {
     title: "Что нового в v{{version}}",
     intro: "Кратко о главном в этом релизе:",
     gotIt: "Понятно",
-    itemUi:
-      "Новый интерфейс в духе VPN-клиента: круглая кнопка питания, выбор стратегии как серверов, сворачиваемый сайдбар.",
-    itemWarp:
-      "WARP больше не выключается сам при остановке Zapret — можно держать туннель отдельно.",
-    itemUpdates:
-      "Проверка обновлений EasyZapret с нового GitHub; при наличии версии окно показывается при запуске.",
-    itemTheme:
-      "Приятный фиолетовый акцент и обновлённая иконка приложения.",
+    itemChrome:
+      "Свой title bar вместо рамки Windows — свернуть, на весь экран и закрыть в трей.",
+    itemPages:
+      "Остальные окна приведены к тому же спокойному стилю: чище, короче, понятнее.",
+    itemFakes:
+      "В Сервисе появилась замена активных фейков (Discord UDP Voice и GameFilter UDP) — как в service.bat FlowSeal.",
+    itemLogo:
+      "Поправлена иконка в сайдбаре: молния по центру, без лишнего круга.",
   },
   setup: {
     title: "Первоначальная настройка",
@@ -198,8 +197,7 @@ export default {
   },
   strategies: {
     title: "Стратегии",
-    description:
-      "Готовые стратегии из релиза FlowSeal. Выбранная стратегия используется переключателем на главном экране и при установке службы.",
+    description: "Стратегии FlowSeal. Выбор здесь и на главном экране — одно и то же.",
     empty: "Стратегии не найдены. Установите zapret в настройках.",
     current: "Выбрана",
     selected: "Текущая стратегия",
@@ -217,7 +215,7 @@ export default {
   },
   service: {
     title: "Сервис",
-    description: "Управление автозапуском zapret и настройками — аналог service.bat.",
+    description: "Служба Windows, фильтры и фейки — как в service.bat.",
     statusBlock: "Статус",
     serviceState: "Служба zapret",
     serviceStrategy: "Стратегия службы",
@@ -236,6 +234,16 @@ export default {
     gameAll: "TCP и UDP",
     gameTcp: "Только TCP",
     gameUdp: "Только UDP",
+    fakesTitle: "Активные фейки",
+    fakesDesc:
+      "Замена файлов ACTIVE_DISCORD_UDP.bin и ACTIVE_GAME_UDP.bin — как пункт 7 в service.bat FlowSeal. Выберите .bin из папки bin.",
+    fakesEmpty: "В папке bin нет подходящих .bin файлов. Сначала установите zapret.",
+    fakeDiscord: "Discord UDP (Voice)",
+    fakeGame: "GameFilter UDP",
+    fakeCurrent: "Сейчас",
+    fakeUnknown: "не определён",
+    fakesApplied: "Активный фейк заменён",
+    fakesRestartHint: "Чтобы изменения применились, перезапустите Zapret.",
     ipset: "IPSet Filter",
     ipsetDesc: "Режим обработки IP-списков: none — выключен, loaded — по списку, any — все IP. После смены перезапустите zapret.",
     autoUpdate: "Автопроверка обновлений zapret",

@@ -16,7 +16,7 @@ export function ZapretPage() {
   ];
 
   return (
-    <div className="mx-auto flex h-full max-w-4xl flex-col">
+    <div className="ez-fade-up mx-auto flex h-full max-w-4xl flex-col">
       <PageHeader title={t("zapret.title")} description={t("zapret.description")} />
       <div className="mb-5">
         <Segmented value={zapretTab} options={tabs} onChange={setZapretTab} />

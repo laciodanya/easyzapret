@@ -1,5 +1,6 @@
 import { useId } from "react";
 
+/** Squircle mark with a centered bolt — no inner ring. */
 export function Logo({ size = 36 }: { size?: number }) {
   const gid = useId().replace(/:/g, "");
   return (
@@ -12,9 +13,9 @@ export function Logo({ size = 36 }: { size?: number }) {
         </linearGradient>
       </defs>
       <rect x="36" y="36" width="440" height="440" rx="128" fill={`url(#${gid})`} />
-      <circle cx="256" cy="256" r="148" fill="none" stroke="#ffffff" strokeOpacity="0.14" strokeWidth="18" />
+      {/* Bolt optically centered in the squircle */}
       <path
-        d="M256 148c-4 0-8 2-10 6l-78 148c-3 6 1 14 8 14h52l-18 78c-2 8 8 14 14 8l98-152c4-6-1-14-8-14h-54l22-74c2-8-4-14-12-14z"
+        d="M278 128 L188 278 H250 L234 384 L324 234 H262 Z"
         fill="#ffffff"
       />
     </svg>

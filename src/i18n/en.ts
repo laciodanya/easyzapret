@@ -103,7 +103,7 @@ export default {
   },
   zapret: {
     title: "Zapret",
-    description: "Manage the service, compare strategies and edit your lists in one place.",
+    description: "Service, strategy tests and lists.",
     tabs: {
       service: "Service",
       tests: "Tests",
@@ -112,8 +112,7 @@ export default {
   },
   autopilot: {
     title: "Autopilot",
-    description:
-      "Keeps an eye on your connection and changes strategy when the current one stops working.",
+    description: "Checks access and switches strategy when something drops.",
     enabled: "Enable Autopilot",
     enabledDesc: "Runs checks on a schedule while the app is open.",
     health: "Availability",
@@ -169,14 +168,14 @@ export default {
     title: "What's new in v{{version}}",
     intro: "A few highlights in this release:",
     gotIt: "Got it",
-    itemUi:
-      "Fresh VPN-style UI: power button, strategy picker like a server list, collapsible sidebar.",
-    itemWarp:
-      "WARP no longer disconnects automatically when Zapret stops — keep the tunnel if you want.",
-    itemUpdates:
-      "App updates check the new GitHub repo; if a version is available, the prompt appears on launch.",
-    itemTheme:
-      "A calmer purple accent and a refreshed app icon.",
+    itemChrome:
+      "Custom title bar instead of the Windows frame — minimize, maximize, and close to tray.",
+    itemPages:
+      "The other screens match the same calm style: cleaner, shorter, easier to scan.",
+    itemFakes:
+      "Service tab can replace active fakes (Discord UDP Voice and GameFilter UDP), like FlowSeal’s service.bat.",
+    itemLogo:
+      "Sidebar logo fixed: bolt centered, no extra ring.",
   },
   setup: {
     title: "Initial setup",
@@ -197,8 +196,7 @@ export default {
   },
   strategies: {
     title: "Strategies",
-    description:
-      "Ready-made strategies from the FlowSeal release. The selected strategy is used by the Home screen toggle and the service installer.",
+    description: "FlowSeal strategies. Same selection as on the Home screen.",
     empty: "No strategies found. Install zapret in Settings.",
     current: "Selected",
     selected: "Current strategy",
@@ -216,7 +214,7 @@ export default {
   },
   service: {
     title: "Service",
-    description: "Manage zapret autostart and options — the service.bat equivalent.",
+    description: "Windows service, filters and fakes — like service.bat.",
     statusBlock: "Status",
     serviceState: "zapret service",
     serviceStrategy: "Service strategy",
@@ -235,6 +233,16 @@ export default {
     gameAll: "TCP and UDP",
     gameTcp: "TCP only",
     gameUdp: "UDP only",
+    fakesTitle: "Active fakes",
+    fakesDesc:
+      "Replace ACTIVE_DISCORD_UDP.bin and ACTIVE_GAME_UDP.bin — same as FlowSeal service.bat option 7. Pick a .bin from the bin folder.",
+    fakesEmpty: "No suitable .bin files in bin/. Install zapret first.",
+    fakeDiscord: "Discord UDP (Voice)",
+    fakeGame: "GameFilter UDP",
+    fakeCurrent: "Current",
+    fakeUnknown: "unknown",
+    fakesApplied: "Active fake replaced",
+    fakesRestartHint: "Restart Zapret for the change to take effect.",
     ipset: "IPSet Filter",
     ipsetDesc: "IP list mode: none — disabled, loaded — use the list, any — all IPs. Restart zapret after changing.",
     autoUpdate: "Zapret auto-update check",

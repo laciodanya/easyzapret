@@ -1,6 +1,6 @@
 [package]
 name = "easyzapret"
-version = "0.5.1"
+version = "0.5.2"
 description = "EasyZapret - desktop manager for Flowseal zapret-discord-youtube and tg-ws-proxy"
 authors = ["EasyZapret"]
 edition = "2021"

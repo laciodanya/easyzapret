@@ -67,8 +67,8 @@ export function LogsPage() {
               className={cn(
                 "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
                 tab === id
-                  ? "bg-teal-500/15 text-teal-700 dark:text-teal-300"
-                  : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800",
+                  ? "bg-accent-soft text-accent ring-1 ring-[rgb(var(--accent)/0.2)]"
+                  : "text-slate-500 hover:bg-[rgb(var(--accent)/0.08)]",
               )}
             >
               {t(`logs.${id}`)}

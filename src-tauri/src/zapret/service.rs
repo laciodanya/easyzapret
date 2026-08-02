@@ -474,3 +474,106 @@ pub async fn check_hosts_file() -> Result<HostsCheck, String> {
         hosts_file: hosts_path,
     })
 }
+
+const ACTIVE_DISCORD_FAKE: &str = "ACTIVE_DISCORD_UDP.bin";
+const ACTIVE_GAME_FAKE: &str = "ACTIVE_GAME_UDP.bin";
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveFakesStatus {
+    /// Available `.bin` basenames in `bin/` (without extension), excluding ACTIVE_*.
+    pub files: Vec<String>,
+    /// Basename that currently matches ACTIVE_DISCORD_UDP.bin, if any.
+    pub discord_current: Option<String>,
+    /// Basename that currently matches ACTIVE_GAME_UDP.bin, if any.
+    pub game_current: Option<String>,
+}
+
+fn list_fake_bin_names(bin: &std::path::Path) -> Result<Vec<String>, String> {
+    if !bin.is_dir() {
+        return Err("bin folder not found".into());
+    }
+    let mut names = Vec::new();
+    for entry in std::fs::read_dir(bin).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if !ext.eq_ignore_ascii_case("bin") {
+            continue;
+        }
+        if stem.to_ascii_uppercase().starts_with("ACTIVE_") {
+            continue;
+        }
+        names.push(stem.to_string());
+    }
+    names.sort_by(|a, b| a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase()));
+    Ok(names)
+}
+
+fn match_active_fake(bin: &std::path::Path, active_name: &str, candidates: &[String]) -> Option<String> {
+    let active = bin.join(active_name);
+    let Ok(active_bytes) = std::fs::read(&active) else {
+        return None;
+    };
+    for name in candidates {
+        let path = bin.join(format!("{name}.bin"));
+        if let Ok(bytes) = std::fs::read(&path) {
+            if bytes == active_bytes {
+                return Some(name.clone());
+            }
+        }
+    }
+    None
+}
+
+/// Lists replaceable fake `.bin` files and which ACTIVE_* slots they currently match.
+/// Mirrors FlowSeal service.bat menu item 7.
+#[tauri::command]
+pub fn get_active_fakes() -> Result<ActiveFakesStatus, String> {
+    let bin = paths::zapret_bin_dir();
+    let files = list_fake_bin_names(&bin)?;
+    let discord_current = match_active_fake(&bin, ACTIVE_DISCORD_FAKE, &files);
+    let game_current = match_active_fake(&bin, ACTIVE_GAME_FAKE, &files);
+    Ok(ActiveFakesStatus {
+        files,
+        discord_current,
+        game_current,
+    })
+}
+
+/// Replaces `ACTIVE_DISCORD_UDP.bin` or `ACTIVE_GAME_UDP.bin` with a chosen fake file.
+/// `kind` is `discord` or `game`; `file` is the basename without `.bin`.
+#[tauri::command]
+pub fn set_active_fake(kind: String, file: String) -> Result<ActiveFakesStatus, String> {
+    let bin = paths::zapret_bin_dir();
+    let files = list_fake_bin_names(&bin)?;
+    let stem = file.trim().trim_end_matches(".bin").trim_end_matches(".BIN");
+    if stem.is_empty() || !files.iter().any(|f| f.eq_ignore_ascii_case(stem)) {
+        return Err("invalid fake file".into());
+    }
+    let source = bin.join(format!("{stem}.bin"));
+    if !source.is_file() {
+        return Err("fake file not found".into());
+    }
+    let active_name = match kind.as_str() {
+        "discord" => ACTIVE_DISCORD_FAKE,
+        "game" => ACTIVE_GAME_FAKE,
+        _ => return Err(format!("unknown fake kind: {kind}")),
+    };
+    let dest = bin.join(active_name);
+    let _ = std::fs::remove_file(&dest);
+    std::fs::copy(&source, &dest).map_err(|e| format!("failed to replace active fake: {e}"))?;
+    logs::append(
+        "zapret",
+        &format!("Active fake {active_name} <- {stem}.bin (restart zapret to apply)"),
+    );
+    get_active_fakes()
+}

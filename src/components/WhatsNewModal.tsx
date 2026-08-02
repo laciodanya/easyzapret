@@ -9,17 +9,17 @@ export function WhatsNewModal() {
   if (!showWhatsNew) return null;
 
   const items = [
-    t("whatsNew.itemUi"),
-    t("whatsNew.itemWarp"),
-    t("whatsNew.itemUpdates"),
-    t("whatsNew.itemTheme"),
+    t("whatsNew.itemChrome"),
+    t("whatsNew.itemPages"),
+    t("whatsNew.itemFakes"),
+    t("whatsNew.itemLogo"),
   ];
 
   return (
     <Modal
       open={showWhatsNew}
       onClose={() => dismissWhatsNew()}
-      title={t("whatsNew.title", { version: appInfo?.version ?? "0.5.1" })}
+      title={t("whatsNew.title", { version: appInfo?.version ?? "0.5.2" })}
       footer={
         <Button variant="primary" onClick={() => dismissWhatsNew()}>
           {t("whatsNew.gotIt")}

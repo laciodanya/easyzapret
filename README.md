@@ -18,8 +18,6 @@
 
 <br>
 
-**[→ Открыть страницу релизов (скачать установщик)](https://github.com/danyalacio/easyzapret/releases/latest)**
-
 *Актуальная версия: [v0.4.0](https://github.com/danyalacio/easyzapret/releases/tag/v0.4.0) · Windows 10/11 x64 · нужны права администратора*
 
 </div>

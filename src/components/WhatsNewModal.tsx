@@ -14,7 +14,7 @@ export function WhatsNewModal() {
     <Modal
       open={showWhatsNew}
       onClose={() => dismissWhatsNew()}
-      title={t("whatsNew.title", { version: appInfo?.version ?? "0.5.3a" })}
+      title={t("whatsNew.title", { version: appInfo?.version ?? "0.5.4" })}
       footer={
         <Button variant="primary" onClick={() => dismissWhatsNew()}>
           {t("whatsNew.gotIt")}

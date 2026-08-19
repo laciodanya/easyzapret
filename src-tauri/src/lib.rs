@@ -57,17 +57,10 @@ pub struct AppInfo {
     pub is_windows: bool,
 }
 
-fn display_app_version(raw: &str) -> String {
-    match raw {
-        "0.5.3-a" => "0.5.3a".into(),
-        other => other.into(),
-    }
-}
-
 #[tauri::command]
 fn get_app_info(app: AppHandle) -> AppInfo {
     AppInfo {
-        version: display_app_version(&app.package_info().version.to_string()),
+        version: app.package_info().version.to_string(),
         data_dir: paths::data_dir().to_string_lossy().to_string(),
         is_admin: admin::is_admin(),
         is_windows: cfg!(windows),

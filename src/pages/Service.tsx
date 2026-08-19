@@ -395,7 +395,7 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
                 run("discord", async () => {
                   const cleared = await api.clearDiscordCache();
                   if (cleared.length === 0) {
-                    toast(t("service.cacheNone"), "warn");
+                    toast(t("service.cacheNone"), "info");
                   } else {
                     toast(t("service.cacheCleared", { list: cleared.join(", ") }), "ok");
                   }

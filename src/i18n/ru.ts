@@ -172,7 +172,7 @@ export default {
     itemDiscordCache:
       "Добавлена очистка кэша Discord Canary и Discord Development из последнего релиза Flowseal",
     itemAutostart:
-      "EasyZapret теперь запускается вместе с Windows у всех. Исправлена ошибка при которой приложение могло не запускаться при включенной опции автозапуска.",
+      "Автозагрузка теперь через планировщик задач с правами администратора. Ключ Run не мог запустить EasyZapret, потому что приложению нужны права админа.",
   },
   setup: {
     title: "Первоначальная настройка",
@@ -396,7 +396,7 @@ export default {
     autostartTitle: "Автозагрузка и автозапуск",
     autostartDesc: "Выберите, что EasyZapret должен включать сам после входа в Windows.",
     launchAtLogin: "Запускать с Windows",
-    launchAtLoginDesc: "EasyZapret откроется автоматически после входа в Windows.",
+    launchAtLoginDesc: "EasyZapret откроется после входа в Windows. Используется задача планировщика, чтобы приложение стартовало с правами администратора.",
     startMinimized: "Сворачивать в трей",
     startMinimizedDesc: "Не показывать главное окно, пока вы сами не откроете его из трея.",
     autoStartZapret: "Автозапуск Zapret",

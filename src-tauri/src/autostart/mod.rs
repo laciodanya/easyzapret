@@ -1,4 +1,9 @@
-//! Login autostart (Windows Run key) and ordered boot sequence on app launch.
+//! Login autostart and ordered boot sequence on app launch.
+//!
+//! EasyZapret requires administrator rights, so the HKCU Run key cannot start
+//! it at logon — Explorer launches those entries unelevated and Windows skips
+//! `requireAdministrator` binaries. A logon scheduled task with
+//! `HighestAvailable` is what actually starts the app.
 //! Zapret always starts before WARP when WARP autostart is enabled.
 
 use std::time::Duration;
@@ -10,12 +15,14 @@ use crate::settings::{self};
 use crate::{logs, paths, AppState};
 
 #[cfg(windows)]
-use winreg::enums::{HKEY_CURRENT_USER, RegType};
+use crate::util::run_capture;
+#[cfg(windows)]
+use winreg::enums::{HKEY_CURRENT_USER, KEY_SET_VALUE};
 #[cfg(windows)]
 use winreg::RegKey;
-#[cfg(windows)]
-use winreg::RegValue;
 
+#[cfg(windows)]
+const TASK_NAME: &str = "EasyZapret";
 #[cfg(windows)]
 const RUN_VALUE: &str = "EasyZapret";
 #[cfg(windows)]
@@ -49,7 +56,8 @@ pub fn query_state() -> AutostartState {
 fn login_entry_exists() -> bool {
     #[cfg(windows)]
     {
-        run_key_command().ok().is_some()
+        let (ok, _) = run_capture("schtasks", &["/Query", "/TN", TASK_NAME]);
+        ok
     }
     #[cfg(not(windows))]
     {
@@ -57,60 +65,131 @@ fn login_entry_exists() -> bool {
     }
 }
 
-/// Quote the exe path for a Run-key command line, stripping the `\\?\` prefix
-/// that `current_exe`/`canonicalize` may add — that prefix breaks startup.
+/// Strip the `\\?\` prefix that `current_exe` may add — it breaks Task Scheduler.
 #[cfg_attr(not(windows), allow(dead_code))]
-fn quote_exe_path(path: &std::path::Path) -> String {
+fn exe_path_for_task(path: &std::path::Path) -> String {
     let mut s = path.to_string_lossy().into_owned();
     if let Some(rest) = s.strip_prefix(r"\\?\") {
         s = rest.to_string();
     }
-    format!("\"{s}\"")
+    s
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn xml_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn logon_task_xml(exe: &str, workdir: &str) -> String {
+    let exe = xml_escape(exe);
+    let workdir = xml_escape(workdir);
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Start EasyZapret at user logon</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <Delay>PT15S</Delay>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>false</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{exe}</Command>
+      <WorkingDirectory>{workdir}</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+"#
+    )
 }
 
 #[cfg(windows)]
-fn login_command() -> Result<String, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    Ok(quote_exe_path(&exe))
-}
-
-#[cfg(windows)]
-fn run_key_command() -> Result<String, String> {
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let key = hkcu.open_subkey(RUN_SUBKEY).map_err(|e| e.to_string())?;
-    key.get_value::<String, _>(RUN_VALUE).map_err(|e| e.to_string())
-}
-
-#[cfg(windows)]
-fn set_startup_approved(enabled: bool) -> Result<(), String> {
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let (key, _) = hkcu
-        .create_subkey(STARTUP_APPROVED_SUBKEY)
-        .map_err(|e| e.to_string())?;
-    if enabled {
-        // 02 00 00 00 + zeros = enabled in Task Manager > Startup.
-        let value = RegValue {
-            bytes: vec![0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            vtype: RegType::REG_BINARY,
-        };
-        key.set_raw_value(RUN_VALUE, &value).map_err(|e| e.to_string())?;
-    } else {
-        let _ = key.delete_value(RUN_VALUE);
+fn utf16_le_bom(text: &str) -> Vec<u8> {
+    let mut out = vec![0xFF, 0xFE];
+    for unit in text.encode_utf16() {
+        out.extend_from_slice(&unit.to_le_bytes());
     }
-    Ok(())
+    out
+}
+
+#[cfg(windows)]
+fn current_exe_path() -> Result<(String, String), String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe = exe_path_for_task(&exe);
+    let workdir = std::path::Path::new(&exe)
+        .parent()
+        .ok_or_else(|| "cannot resolve install directory".to_string())?
+        .to_string_lossy()
+        .into_owned();
+    Ok((exe, workdir))
+}
+
+#[cfg(windows)]
+fn remove_legacy_run_key() {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    if let Ok(run) = hkcu.open_subkey_with_flags(RUN_SUBKEY, KEY_SET_VALUE) {
+        let _ = run.delete_value(RUN_VALUE);
+    }
+    if let Ok(approved) = hkcu.open_subkey_with_flags(STARTUP_APPROVED_SUBKEY, KEY_SET_VALUE) {
+        let _ = approved.delete_value(RUN_VALUE);
+    }
 }
 
 #[cfg(windows)]
 fn set_login_entry(enable: bool) -> Result<(), String> {
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let (run, _) = hkcu.create_subkey(RUN_SUBKEY).map_err(|e| e.to_string())?;
+    // 0.5.3 wrote a Run key; Explorer cannot start this elevated exe from it.
+    remove_legacy_run_key();
     if enable {
-        let command = login_command()?;
-        run.set_value(RUN_VALUE, &command).map_err(|e| e.to_string())?;
-        set_startup_approved(true)?;
+        let (exe, workdir) = current_exe_path()?;
+        let xml_path = paths::tmp_dir().join("easyzapret-logon-task.xml");
+        std::fs::create_dir_all(paths::tmp_dir()).map_err(|e| e.to_string())?;
+        std::fs::write(&xml_path, utf16_le_bom(&logon_task_xml(&exe, &workdir)))
+            .map_err(|e| e.to_string())?;
+        let xml_arg = xml_path.to_string_lossy().into_owned();
+        let (ok, out) = run_capture(
+            "schtasks",
+            &["/Create", "/TN", TASK_NAME, "/XML", &xml_arg, "/F"],
+        );
+        let _ = std::fs::remove_file(&xml_path);
+        if !ok {
+            return Err(format!("failed to register logon task: {out}"));
+        }
     } else {
-        let _ = run.delete_value(RUN_VALUE);
-        let _ = set_startup_approved(false);
+        let _ = run_capture("schtasks", &["/Delete", "/TN", TASK_NAME, "/F"]);
     }
     Ok(())
 }
@@ -133,7 +212,7 @@ pub fn apply_launch_at_login(enable: bool) -> Result<(), String> {
 }
 
 /// Called once from `setup`: turn login autostart on for every 0.5.3+ user,
-/// then keep the Run key in sync with the current exe path.
+/// then keep the logon task in sync with the current exe path.
 pub fn ensure_on_app_start() {
     #[cfg(windows)]
     {
@@ -153,10 +232,10 @@ pub fn ensure_on_app_start() {
         match set_login_entry(s.autostart.launch_at_login) {
             Ok(()) => {
                 if s.autostart.launch_at_login {
-                    logs::append("app", "autostart: Run key registered");
+                    logs::append("app", "autostart: logon task registered");
                 }
             }
-            Err(e) => logs::append("app", &format!("autostart: Run key failed — {e}")),
+            Err(e) => logs::append("app", &format!("autostart: logon task failed — {e}")),
         }
     }
 }
@@ -260,14 +339,23 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn quote_exe_path_wraps_and_strips_verbatim_prefix() {
+    fn exe_path_for_task_strips_verbatim_prefix() {
         assert_eq!(
-            quote_exe_path(Path::new(r"\\?\C:\Program Files\EasyZapret\EasyZapret.exe")),
-            r#""C:\Program Files\EasyZapret\EasyZapret.exe""#
+            exe_path_for_task(Path::new(r"\\?\C:\Program Files\EasyZapret\EasyZapret.exe")),
+            r"C:\Program Files\EasyZapret\EasyZapret.exe"
         );
-        assert_eq!(
-            quote_exe_path(Path::new(r"C:\Program Files\EasyZapret\EasyZapret.exe")),
-            r#""C:\Program Files\EasyZapret\EasyZapret.exe""#
+    }
+
+    #[test]
+    fn logon_task_xml_escapes_and_contains_highest_run_level() {
+        let xml = logon_task_xml(
+            r"C:\Program Files\EasyZapret\EasyZapret.exe",
+            r"C:\Program Files\EasyZapret",
         );
+        assert!(xml.contains("<RunLevel>HighestAvailable</RunLevel>"));
+        assert!(xml.contains("<LogonTrigger>"));
+        assert!(xml.contains(r"<Command>C:\Program Files\EasyZapret\EasyZapret.exe</Command>"));
+        assert!(xml.contains("<Delay>PT15S</Delay>"));
+        assert_eq!(xml_escape(r"a&b<c>"), "a&amp;b&lt;c&gt;");
     }
 }

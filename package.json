@@ -1,7 +1,7 @@
 {
   "name": "easyzapret",
   "private": true,
-  "version": "0.5.3",
+  "version": "0.5.3-a",
   "type": "module",
   "scripts": {
     "dev": "vite",

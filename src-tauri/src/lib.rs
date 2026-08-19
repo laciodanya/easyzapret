@@ -57,10 +57,17 @@ pub struct AppInfo {
     pub is_windows: bool,
 }
 
+fn display_app_version(raw: &str) -> String {
+    match raw {
+        "0.5.3-a" => "0.5.3a".into(),
+        other => other.into(),
+    }
+}
+
 #[tauri::command]
 fn get_app_info(app: AppHandle) -> AppInfo {
     AppInfo {
-        version: app.package_info().version.to_string(),
+        version: display_app_version(&app.package_info().version.to_string()),
         data_dir: paths::data_dir().to_string_lossy().to_string(),
         is_admin: admin::is_admin(),
         is_windows: cfg!(windows),
@@ -232,6 +239,14 @@ fn refresh_tray(app: AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    {
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                let _ = std::env::set_current_dir(dir);
+            }
+        }
+    }
     let _ = paths::ensure_dirs();
     logs::append("app", "EasyZapret starting");
 

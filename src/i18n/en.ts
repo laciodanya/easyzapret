@@ -171,7 +171,7 @@ export default {
     itemDiscordCache:
       "Diagnostics can now clear Discord cache for Stable, PTB, Canary, and Development — same as FlowSeal’s service.bat.",
     itemAutostart:
-      "EasyZapret now starts with Windows for everyone. The login entry is written correctly (Program Files paths) and repaired on each launch.",
+      "Login autostart now uses a scheduled task with administrator rights. The Run key cannot start EasyZapret because the app must run elevated.",
   },
   setup: {
     title: "Initial setup",
@@ -395,7 +395,7 @@ export default {
     autostartTitle: "Autostart & boot",
     autostartDesc: "Choose what EasyZapret should turn on after you sign in to Windows.",
     launchAtLogin: "Launch with Windows",
-    launchAtLoginDesc: "Open EasyZapret automatically after you sign in to Windows.",
+    launchAtLoginDesc: "EasyZapret opens after you sign in. Uses a scheduled task so it can start with administrator rights.",
     startMinimized: "Start minimized to tray",
     startMinimizedDesc: "Keep the main window hidden until you open it from the tray.",
     autoStartZapret: "Auto-start Zapret",

@@ -8,13 +8,13 @@ export function WhatsNewModal() {
 
   if (!showWhatsNew) return null;
 
-  const items = [t("whatsNew.itemDiscordCache"), t("whatsNew.itemAutostart")];
+  const items = [t("whatsNew.itemAutostart")];
 
   return (
     <Modal
       open={showWhatsNew}
       onClose={() => dismissWhatsNew()}
-      title={t("whatsNew.title", { version: appInfo?.version ?? "0.5.3" })}
+      title={t("whatsNew.title", { version: appInfo?.version ?? "0.5.3a" })}
       footer={
         <Button variant="primary" onClick={() => dismissWhatsNew()}>
           {t("whatsNew.gotIt")}

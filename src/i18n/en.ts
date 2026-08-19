@@ -168,14 +168,10 @@ export default {
     title: "What's new in v{{version}}",
     intro: "A few highlights in this release:",
     gotIt: "Got it",
-    itemChrome:
-      "Custom title bar instead of the Windows frame — minimize, maximize, and close to tray.",
-    itemPages:
-      "The other screens match the same calm style: cleaner, shorter, easier to scan.",
-    itemFakes:
-      "Service tab can replace active fakes (Discord UDP Voice and GameFilter UDP), like FlowSeal’s service.bat.",
-    itemLogo:
-      "Sidebar logo fixed: bolt centered, no extra ring.",
+    itemDiscordCache:
+      "Diagnostics can now clear Discord cache for Stable, PTB, Canary, and Development — same as FlowSeal’s service.bat.",
+    itemAutostart:
+      "EasyZapret now starts with Windows for everyone. The login entry is written correctly (Program Files paths) and repaired on each launch.",
   },
   setup: {
     title: "Initial setup",
@@ -262,8 +258,10 @@ export default {
     runDiagnostics: "Run diagnostics",
     removeConflicts: "Remove conflicting services",
     clearDiscordCache: "Clear Discord cache",
-    clearDiscordConfirm: "Discord will be closed and its cache deleted. Continue?",
-    cacheCleared: "Discord cache cleared",
+    clearDiscordConfirm:
+      "Installed Discord apps (Stable, PTB, Canary, Development) will be closed and their cache deleted. Continue?",
+    cacheCleared: "Discord cache cleared: {{list}}",
+    cacheNone: "No Discord installations found",
     conflictsRemoved: "Removed: {{list}}",
     diag: {
       bfe: "Base Filtering Engine",

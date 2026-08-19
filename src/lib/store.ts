@@ -122,7 +122,7 @@ function defaultAutopilot(): AutopilotSettings {
 
 function defaultAutostart(): AutostartSettings {
   return {
-    launchAtLogin: false,
+    launchAtLogin: true,
     autoStartZapret: false,
     autoStartWarp: false,
     autoStartTg: false,
@@ -251,14 +251,20 @@ export const useStore = create<AppStore>((set, get) => ({
   updateAutostart: async (patch) => {
     const current = get().settings;
     if (!current) return;
+    const previous = current.autostart;
     const next = { ...current.autostart, ...patch };
     if (next.autoStartWarp) next.autoStartZapret = true;
     const settings = mergeSettings({ ...current, autostart: next });
     set({ settings });
-    if (patch.launchAtLogin !== undefined) {
-      await api.setLaunchAtLogin(patch.launchAtLogin);
+    try {
+      if (patch.launchAtLogin !== undefined) {
+        await api.setLaunchAtLogin(patch.launchAtLogin);
+      }
+      await api.saveSettings(settings);
+    } catch (e) {
+      set({ settings: { ...current, autostart: previous } });
+      throw e;
     }
-    await api.saveSettings(settings);
   },
 
   checkUpdates: async (opts) => {

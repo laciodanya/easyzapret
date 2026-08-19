@@ -251,6 +251,7 @@ pub fn run() {
         .manage(AppState::default())
         .setup(|app| {
             tray::setup_tray(app.handle())?;
+            autostart::ensure_on_app_start();
             autostart::maybe_hide_on_start(app.handle());
             let boot_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {

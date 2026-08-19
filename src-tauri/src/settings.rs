@@ -20,7 +20,7 @@ pub struct AutostartSettings {
 impl Default for AutostartSettings {
     fn default() -> Self {
         Self {
-            launch_at_login: false,
+            launch_at_login: true,
             auto_start_zapret: false,
             auto_start_warp: false,
             auto_start_tg: false,

@@ -216,8 +216,18 @@ pub fn remove_conflicting_services() -> Result<Vec<String>, String> {
     }
 }
 
-/// Clears Discord cache directories (Cache, Code Cache, GPUCache),
-/// closing Discord first — mirrors the optional step in service.bat.
+/// Discord editions whose cache service.bat can wipe (Stable, PTB, Canary, Development).
+/// `(process, display name, %APPDATA% folder)`
+#[cfg(windows)]
+const DISCORD_CACHE_EDITIONS: &[(&str, &str, &str)] = &[
+    ("Discord.exe", "Discord", "discord"),
+    ("DiscordPTB.exe", "Discord PTB", "discordptb"),
+    ("DiscordCanary.exe", "Discord Canary", "discordcanary"),
+    ("DiscordDevelopment.exe", "Discord Development", "discorddevelopment"),
+];
+
+/// Clears Discord cache directories (Cache, Code Cache, GPUCache) for each
+/// installed edition, closing that edition first — same as service.bat.
 #[tauri::command]
 pub fn clear_discord_cache() -> Result<Vec<String>, String> {
     #[cfg(not(windows))]
@@ -226,15 +236,22 @@ pub fn clear_discord_cache() -> Result<Vec<String>, String> {
     }
     #[cfg(windows)]
     {
-        let _ = run_capture("taskkill", &["/IM", "Discord.exe", "/F"]);
         let appdata = std::env::var("APPDATA").map_err(|e| e.to_string())?;
-        let base = std::path::PathBuf::from(appdata).join("discord");
+        let appdata = std::path::PathBuf::from(appdata);
         let mut cleared = Vec::new();
-        for dir in ["Cache", "Code Cache", "GPUCache"] {
-            let path = base.join(dir);
-            if path.exists() && std::fs::remove_dir_all(&path).is_ok() {
-                cleared.push(dir.to_string());
+        for &(process, name, folder) in DISCORD_CACHE_EDITIONS {
+            let base = appdata.join(folder);
+            if !base.is_dir() {
+                continue;
             }
+            let _ = run_capture("taskkill", &["/IM", process, "/F"]);
+            for dir in ["Cache", "Code Cache", "GPUCache"] {
+                let path = base.join(dir);
+                if path.exists() {
+                    let _ = std::fs::remove_dir_all(&path);
+                }
+            }
+            cleared.push(name.to_string());
         }
         logs::append("app", &format!("Discord cache cleared: {cleared:?}"));
         Ok(cleared)

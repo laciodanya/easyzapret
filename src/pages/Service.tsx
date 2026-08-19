@@ -393,8 +393,13 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
               onClick={() => {
                 setConfirmDiscord(false);
                 run("discord", async () => {
-                  await api.clearDiscordCache();
-                }, t("service.cacheCleared"));
+                  const cleared = await api.clearDiscordCache();
+                  if (cleared.length === 0) {
+                    toast(t("service.cacheNone"), "warn");
+                  } else {
+                    toast(t("service.cacheCleared", { list: cleared.join(", ") }), "ok");
+                  }
+                });
               }}
             >
               {t("common.confirm")}

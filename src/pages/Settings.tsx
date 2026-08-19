@@ -216,8 +216,14 @@ export function SettingsPage() {
         </p>
         <FieldRow title={t("settings.launchAtLogin")} description={t("settings.launchAtLoginDesc")}>
           <Switch
-            checked={settings?.autostart.launchAtLogin ?? false}
-            onChange={(v) => updateAutostart({ launchAtLogin: v })}
+            checked={settings?.autostart.launchAtLogin ?? true}
+            onChange={async (v) => {
+              try {
+                await updateAutostart({ launchAtLogin: v });
+              } catch (e) {
+                toast(errText(t, e), "fail");
+              }
+            }}
           />
         </FieldRow>
         <FieldRow title={t("settings.startMinimized")} description={t("settings.startMinimizedDesc")}>
@@ -282,7 +288,7 @@ export function SettingsPage() {
         </Note>
         <div className="md:col-span-2">
           <Note tone={appUpdate?.updateAvailable ? "warn" : "info"} title={t("settings.about")}>
-            {t("settings.aboutText", { version: appInfo?.version ?? "0.5.2" })}{" "}
+            {t("settings.aboutText", { version: appInfo?.version ?? "0.5.3" })}{" "}
             <button
               className="underline"
               onClick={() => openUrl("https://github.com/Flowseal/zapret-discord-youtube").catch(() => {})}

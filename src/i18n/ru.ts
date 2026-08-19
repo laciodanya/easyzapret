@@ -169,14 +169,10 @@ export default {
     title: "Что нового в v{{version}}",
     intro: "Кратко о главном в этом релизе:",
     gotIt: "Понятно",
-    itemChrome:
-      "Свой title bar вместо рамки Windows — свернуть, на весь экран и закрыть в трей.",
-    itemPages:
-      "Остальные окна приведены к тому же спокойному стилю: чище, короче, понятнее.",
-    itemFakes:
-      "В Сервисе появилась замена активных фейков (Discord UDP Voice и GameFilter UDP) — как в service.bat FlowSeal.",
-    itemLogo:
-      "Поправлена иконка в сайдбаре: молния по центру, без лишнего круга.",
+    itemDiscordCache:
+      "Добавлена очистка кэша Discord Canary и Discord Development из последнего релиза Flowseal",
+    itemAutostart:
+      "EasyZapret теперь запускается вместе с Windows у всех. Исправлена ошибка при которой приложение могло не запускаться при включенной опции автозапуска.",
   },
   setup: {
     title: "Первоначальная настройка",
@@ -263,8 +259,10 @@ export default {
     runDiagnostics: "Запустить диагностику",
     removeConflicts: "Удалить конфликтующие службы",
     clearDiscordCache: "Очистить кэш Discord",
-    clearDiscordConfirm: "Discord будет закрыт, его кэш — удалён. Продолжить?",
-    cacheCleared: "Кэш Discord очищен",
+    clearDiscordConfirm:
+      "Установленные Discord (Stable, PTB, Canary, Development) будут закрыты, их кэш — удалён. Продолжить?",
+    cacheCleared: "Кэш Discord очищен: {{list}}",
+    cacheNone: "Установки Discord не найдены",
     conflictsRemoved: "Удалено: {{list}}",
     diag: {
       bfe: "Base Filtering Engine",

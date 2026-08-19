@@ -1043,7 +1043,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "easyzapret"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
@@ -1062,6 +1062,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tokio",
  "windows-sys 0.59.0",
+ "winreg",
  "zip 2.4.2",
 ]
 

@@ -152,13 +152,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: EasyZapret ${{ github.ref_name }}
           draft: false
-          generate_release_notes: false
-          body: |
-            ## What's Changed
-
-            - Починен автозапуск с Windows: приложение запускается через планировщик задач с правами администратора
-
-            **Full Changelog**: https://github.com/laciodanya/easyzapret/compare/v0.5.3...v0.5.4
+          generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
             src-tauri/target/release/bundle/nsis/*-setup.exe

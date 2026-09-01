@@ -23,11 +23,13 @@ export type Page =
   | "zapret"
   | "autopilot"
   | "telegram"
+  | "vpn"
   | "warp"
   | "logs"
   | "settings";
 
 export type ZapretTab = "service" | "tests" | "lists";
+export type VpnTab = "connection" | "subscriptions" | "settings";
 
 const THEME_KEY = "easyzapret-theme";
 const SIDEBAR_KEY = "easyzapret-sidebar-expanded";
@@ -43,6 +45,7 @@ function readSidebarExpanded(): boolean {
 interface AppStore {
   page: Page;
   zapretTab: ZapretTab;
+  vpnTab: VpnTab;
   ready: boolean;
   initError: boolean;
   appInfo: AppInfo | null;
@@ -61,6 +64,7 @@ interface AppStore {
 
   setPage: (page: Page) => void;
   setZapretTab: (tab: ZapretTab) => void;
+  setVpnTab: (tab: VpnTab) => void;
   setSidebarExpanded: (expanded: boolean) => void;
   init: () => Promise<void>;
   refreshStatus: () => Promise<void>;
@@ -145,6 +149,7 @@ function mergeSettings(raw: Settings): Settings {
 export const useStore = create<AppStore>((set, get) => ({
   page: "home",
   zapretTab: "service",
+  vpnTab: "connection",
   ready: false,
   initError: false,
   appInfo: null,
@@ -163,6 +168,7 @@ export const useStore = create<AppStore>((set, get) => ({
 
   setPage: (page) => set({ page }),
   setZapretTab: (zapretTab) => set({ zapretTab, page: "zapret" }),
+  setVpnTab: (vpnTab) => set({ vpnTab, page: "vpn" }),
   setSidebarExpanded: (expanded) => {
     try {
       localStorage.setItem(SIDEBAR_KEY, expanded ? "1" : "0");

@@ -94,6 +94,8 @@ pub struct Settings {
     /// Installed release tags, used for update checks (compare to GitHub tag)
     pub zapret_version: Option<String>,
     pub tg_version: Option<String>,
+    /// Installed Xray-core tag for the built-in VPN
+    pub vpn_core_version: Option<String>,
     /// Check both components for updates on app start
     pub check_updates_on_start: bool,
     pub autopilot: AutopilotSettings,
@@ -110,6 +112,7 @@ impl Default for Settings {
             selected_strategy: None,
             zapret_version: None,
             tg_version: None,
+            vpn_core_version: None,
             check_updates_on_start: true,
             autopilot: AutopilotSettings::default(),
             autostart: AutostartSettings::default(),

@@ -38,6 +38,33 @@ pub fn tg_exe() -> PathBuf {
     tg_dir().join("TgWsProxy_windows.exe")
 }
 
+pub fn vpn_dir() -> PathBuf {
+    data_dir().join("vpn")
+}
+
+pub fn vpn_core_dir() -> PathBuf {
+    vpn_dir().join("core")
+}
+
+pub fn vpn_core_exe() -> PathBuf {
+    #[cfg(windows)]
+    {
+        vpn_core_dir().join("xray.exe")
+    }
+    #[cfg(not(windows))]
+    {
+        vpn_core_dir().join("xray")
+    }
+}
+
+pub fn vpn_state_file() -> PathBuf {
+    vpn_dir().join("state.json")
+}
+
+pub fn vpn_runtime_config() -> PathBuf {
+    vpn_dir().join("runtime-config.json")
+}
+
 pub fn logs_dir() -> PathBuf {
     data_dir().join("logs")
 }
@@ -51,7 +78,15 @@ pub fn settings_file() -> PathBuf {
 }
 
 pub fn ensure_dirs() -> std::io::Result<()> {
-    for dir in [data_dir(), zapret_dir(), tg_dir(), logs_dir(), tmp_dir()] {
+    for dir in [
+        data_dir(),
+        zapret_dir(),
+        tg_dir(),
+        vpn_dir(),
+        vpn_core_dir(),
+        logs_dir(),
+        tmp_dir(),
+    ] {
         std::fs::create_dir_all(dir)?;
     }
     Ok(())

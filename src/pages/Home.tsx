@@ -160,6 +160,10 @@ export function HomePage() {
 
   async function toggleWarp(value: boolean) {
     setWarpError(null);
+    if (value && status?.vpn?.connected) {
+      setWarpError(t("errors.warp_vpn_exclusive"));
+      return;
+    }
     if (value && !warp?.installed) {
       setWarpError(t("errors.warp_not_installed"));
       setPage("warp");

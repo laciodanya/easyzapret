@@ -11,6 +11,7 @@ const ICONS: Record<Page, string> = {
   autopilot: "M13 10V3L4 14h7v7l9-11h-7z",
   telegram:
     "M21.5 4.5L2.8 11.7c-.8.3-.8 1.4.05 1.7l4.7 1.6 1.8 5.5c.25.75 1.2.9 1.7.3l2.5-2.9 4.9 3.6c.6.45 1.5.1 1.65-.65l3-15c.2-.9-.7-1.65-1.6-1.35z",
+  vpn: "M12 3l7 4v5c0 5-3.5 9.4-7 10-3.5-.6-7-5-7-10V7l7-4z",
   warp: "M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z",
   logs: "M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
   settings:
@@ -39,6 +40,7 @@ export function Sidebar() {
     { id: "strategies", label: t("nav.strategies") },
     { id: "zapret", label: t("nav.zapret") },
     { id: "telegram", label: t("nav.telegram") },
+    { id: "vpn", label: t("nav.vpn") },
     { id: "warp", label: t("nav.warp") },
     { id: "logs", label: t("nav.logs") },
     { id: "settings", label: t("nav.settings") },
@@ -56,7 +58,7 @@ export function Sidebar() {
         {expanded && (
           <div className="min-w-0">
             <div className="truncate text-sm font-bold tracking-tight text-[rgb(var(--text))]">EasyZapret</div>
-            <div className="truncate text-[10px] text-[rgb(var(--text-secondary))]">v{appInfo?.version ?? "0.5.4"}</div>
+            <div className="truncate text-[10px] text-[rgb(var(--text-secondary))]">v{appInfo?.version ?? "0.6.0"}</div>
           </div>
         )}
       </div>

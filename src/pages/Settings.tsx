@@ -39,7 +39,7 @@ export function SettingsPage() {
   const [progress, setProgress] = useState<InstallProgress | null>(null);
   const [checking, setChecking] = useState(false);
   const [appInstalling, setAppInstalling] = useState<AppUpdateProgress | null>(null);
-  const [confirm, setConfirm] = useState<"zapret" | "tgproxy" | null>(null);
+  const [confirm, setConfirm] = useState<"zapret" | "tgproxy" | "vpncore" | null>(null);
 
   useEffect(() => {
     let un: UnlistenFn | null = null;
@@ -51,11 +51,13 @@ export function SettingsPage() {
     };
   }, []);
 
-  function requestInstall(component: "zapret" | "tgproxy") {
+  function requestInstall(component: "zapret" | "tgproxy" | "vpncore") {
     const alreadyInstalled =
-      component === "zapret" ? components?.zapretInstalled : components?.tgInstalled;
-    // Updating/reinstalling an installed component stops the running bypass —
-    // warn first. A first-time install has nothing to stop.
+      component === "zapret"
+        ? components?.zapretInstalled
+        : component === "tgproxy"
+          ? components?.tgInstalled
+          : components?.vpnCoreInstalled;
     if (alreadyInstalled) {
       setConfirm(component);
     } else {
@@ -63,7 +65,7 @@ export function SettingsPage() {
     }
   }
 
-  async function install(component: "zapret" | "tgproxy") {
+  async function install(component: "zapret" | "tgproxy" | "vpncore") {
     setConfirm(null);
     setInstalling(component);
     try {
@@ -109,11 +111,26 @@ export function SettingsPage() {
     }
   }
 
-  function componentCard(component: "zapret" | "tgproxy") {
-    const installed = component === "zapret" ? components?.zapretInstalled : components?.tgInstalled;
-    const version = component === "zapret" ? components?.zapretVersion : components?.tgVersion;
+  function componentCard(component: "zapret" | "tgproxy" | "vpncore") {
+    const installed =
+      component === "zapret"
+        ? components?.zapretInstalled
+        : component === "tgproxy"
+          ? components?.tgInstalled
+          : components?.vpnCoreInstalled;
+    const version =
+      component === "zapret"
+        ? components?.zapretVersion
+        : component === "tgproxy"
+          ? components?.tgVersion
+          : components?.vpnCoreVersion;
     const upd = updates?.find((u) => u.component === component);
-    const name = component === "zapret" ? "Zapret (zapret-discord-youtube)" : "Telegram Proxy (tg-ws-proxy)";
+    const name =
+      component === "zapret"
+        ? "Zapret (zapret-discord-youtube)"
+        : component === "tgproxy"
+          ? "Telegram Proxy (tg-ws-proxy)"
+          : "VPN core (Xray)";
     const busy = installing === component;
     const pct =
       busy && progress?.component === component && progress.phase === "downloading" && progress.total > 0
@@ -267,6 +284,7 @@ export function SettingsPage() {
         <div className="divide-y divide-slate-100 dark:divide-slate-800">
           {componentCard("zapret")}
           {componentCard("tgproxy")}
+          {componentCard("vpncore")}
         </div>
         <FieldRow title={t("settings.checkUpdatesOnStart")}>
           <Switch
@@ -288,7 +306,7 @@ export function SettingsPage() {
         </Note>
         <div className="md:col-span-2">
           <Note tone={appUpdate?.updateAvailable ? "warn" : "info"} title={t("settings.about")}>
-            {t("settings.aboutText", { version: appInfo?.version ?? "0.5.4" })}{" "}
+            {t("settings.aboutText", { version: appInfo?.version ?? "0.6.0" })}{" "}
             <button
               className="underline"
               onClick={() => openUrl("https://github.com/Flowseal/zapret-discord-youtube").catch(() => {})}
@@ -355,7 +373,9 @@ export function SettingsPage() {
         <p>
           {confirm === "tgproxy"
             ? t("settings.updateConfirmTg")
-            : t("settings.updateConfirmZapret")}
+            : confirm === "vpncore"
+              ? t("settings.updateConfirmVpn")
+              : t("settings.updateConfirmZapret")}
         </p>
       </Modal>
     </div>

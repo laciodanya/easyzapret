@@ -58,6 +58,10 @@ export function WarpPage() {
   }, [loadDetails]);
 
   async function toggle(value: boolean) {
+    if (value && status?.vpn?.connected) {
+      toast(t("errors.warp_vpn_exclusive"), "fail");
+      return;
+    }
     if (value && !zapretOn) {
       toast(t("warp.needZapret"), "fail");
       return;
@@ -134,6 +138,11 @@ export function WarpPage() {
         </Card>
       ) : (
         <>
+          {status?.vpn?.connected && (
+            <div className="mb-4">
+              <Note tone="warn">{t("errors.warp_vpn_exclusive")}</Note>
+            </div>
+          )}
           <Card className="mb-4">
             <FieldRow
               title={t("warp.title")}
@@ -153,7 +162,7 @@ export function WarpPage() {
                 </Badge>
                 <Switch
                   checked={action === "starting" || (action !== "stopping" && connected)}
-                  disabled={action !== null || (!connected && !zapretOn)}
+                  disabled={action !== null || (!connected && (!zapretOn || !!status?.vpn?.connected))}
                   onChange={toggle}
                 />
               </div>

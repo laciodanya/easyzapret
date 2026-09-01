@@ -21,13 +21,13 @@ export function UpdatesModal() {
   } = useStore();
   const [installing, setInstalling] = useState<string | null>(null);
   const [appInstalling, setAppInstalling] = useState<AppUpdateProgress | null>(null);
-  const [confirm, setConfirm] = useState<"zapret" | "tgproxy" | null>(null);
+  const [confirm, setConfirm] = useState<"zapret" | "tgproxy" | "vpncore" | null>(null);
 
   const available = updates?.filter((u) => u.updateAvailable) ?? [];
   const appAvailable = !!appUpdate?.updateAvailable;
   if (!showUpdatesModal || (available.length === 0 && !appAvailable)) return null;
 
-  async function install(component: "zapret" | "tgproxy") {
+  async function install(component: "zapret" | "tgproxy" | "vpncore") {
     setConfirm(null);
     setInstalling(component);
     try {
@@ -118,7 +118,11 @@ export function UpdatesModal() {
           >
             <div>
               <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                {u.component === "zapret" ? "Zapret" : "Telegram Proxy"}
+                {u.component === "zapret"
+                  ? "Zapret"
+                  : u.component === "tgproxy"
+                    ? "Telegram Proxy"
+                    : "VPN (Xray)"}
               </div>
               <div className="text-xs text-slate-400">
                 {u.installed ?? "—"} → <span className="font-semibold">{u.latest}</span>
@@ -160,7 +164,9 @@ export function UpdatesModal() {
         <p>
           {confirm === "tgproxy"
             ? t("settings.updateConfirmTg")
-            : t("settings.updateConfirmZapret")}
+            : confirm === "vpncore"
+              ? t("settings.updateConfirmVpn")
+              : t("settings.updateConfirmZapret")}
         </p>
       </Modal>
     </Modal>

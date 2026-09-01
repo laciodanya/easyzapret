@@ -14,6 +14,10 @@ import type {
   UpdateStatus,
   UserListFile,
   WarpStatus,
+  VpnDetails,
+  VpnNode,
+  VpnSettings,
+  VpnSubscription,
   ZapretStatus,
 } from "./types";
 
@@ -27,7 +31,7 @@ export const api = {
 
   // components / updates
   getComponentsState: () => invoke<ComponentsState>("get_components_state"),
-  installComponent: (component: "zapret" | "tgproxy") =>
+  installComponent: (component: "zapret" | "tgproxy" | "vpncore") =>
     invoke<string>("install_component", { component }),
   checkUpdates: () => invoke<UpdateStatus[]>("check_updates"),
   checkAppUpdate: () => invoke<AppUpdateStatus>("check_app_update"),
@@ -70,6 +74,20 @@ export const api = {
   warpResetKeys: () => invoke<void>("warp_reset_keys"),
   warpSetMode: (mode: "warp" | "doh" | "warp+doh") =>
     invoke<void>("warp_set_mode", { mode }),
+
+  // built-in VPN (Xray)
+  vpnDetails: () => invoke<VpnDetails>("vpn_details"),
+  vpnGetSettings: () => invoke<VpnSettings>("vpn_get_settings"),
+  vpnSaveSettings: (settings: VpnSettings) => invoke<VpnSettings>("vpn_save_settings", { settings }),
+  vpnAddSubscription: (url: string) => invoke<VpnSubscription>("vpn_add_subscription", { url }),
+  vpnUpdateSubscription: (id: string) => invoke<VpnSubscription>("vpn_update_subscription", { id }),
+  vpnRemoveSubscription: (id: string) => invoke<void>("vpn_remove_subscription", { id }),
+  vpnAddNode: (link: string) => invoke<VpnNode>("vpn_add_node", { link }),
+  vpnRemoveNode: (id: string) => invoke<void>("vpn_remove_node", { id }),
+  vpnSelectNode: (id: string) => invoke<void>("vpn_select_node", { id }),
+  vpnPingNodes: (ids: string[]) => invoke<[string, number | null][]>("vpn_ping_nodes", { ids }),
+  vpnConnect: (nodeId?: string | null) => invoke<void>("vpn_connect", { nodeId: nodeId ?? null }),
+  vpnDisconnect: () => invoke<void>("vpn_disconnect"),
 
   getAutopilotStatus: () => invoke<AutopilotStatus>("get_autopilot_status"),
   runAutopilotCheckNow: () => invoke<AutopilotStatus>("run_autopilot_check_now"),

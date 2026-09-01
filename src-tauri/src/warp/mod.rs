@@ -199,6 +199,9 @@ pub fn connect_with_state(state: &AppState) -> Result<(), String> {
     let Some(cli) = warp_cli() else {
         return Err("warp_not_installed".into());
     };
+    if crate::vpn::is_connected() {
+        return Err("warp_vpn_exclusive".into());
+    }
     if !zapret_running() {
         return Err("zapret_required".into());
     }

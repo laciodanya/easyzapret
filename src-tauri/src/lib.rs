@@ -9,6 +9,7 @@ mod tg_proxy;
 mod tray;
 mod updates;
 mod util;
+mod vpn;
 mod warp;
 mod zapret;
 
@@ -29,9 +30,10 @@ pub struct AppState {
     pub tests_running: AtomicBool,
     pub autopilot_busy: AtomicBool,
     pub tray: Mutex<Option<tray::TrayHandles>>,
-    /// Whether the user wants WARP connected. Used to auto-disconnect WARP when
-    /// Zapret stops, since WARP is only allowed to run alongside Zapret.
+    /// Whether the user wants WARP connected.
     pub warp_active: AtomicBool,
+    /// Whether the built-in VPN should stay connected.
+    pub vpn_active: AtomicBool,
 }
 
 impl Default for AppState {
@@ -44,6 +46,7 @@ impl Default for AppState {
             autopilot_busy: AtomicBool::new(false),
             tray: Mutex::new(None),
             warp_active: AtomicBool::new(false),
+            vpn_active: AtomicBool::new(false),
         }
     }
 }
@@ -73,6 +76,7 @@ struct FullStatus {
     zapret: zapret::service::ZapretStatus,
     tg: tg_proxy::TgStatus,
     warp: warp::WarpStatus,
+    vpn: vpn::VpnStatus,
     autopilot: autopilot::AutopilotStatus,
     tests_running: bool,
 }
@@ -149,6 +153,7 @@ fn get_status(app: AppHandle, state: State<'_, AppState>) -> FullStatus {
     let cache = STATUS_CACHE.lock().unwrap();
 
     warp::enforce_dependency(&state);
+    vpn::enforce_warp_exclusivity();
 
     let zapret = zapret::service::ZapretStatus {
         running: cache.winws_running,
@@ -168,6 +173,7 @@ fn get_status(app: AppHandle, state: State<'_, AppState>) -> FullStatus {
         zapret,
         tg,
         warp: warp::quick_status(),
+        vpn: vpn::quick_status(),
         autopilot: autopilot::status(),
         tests_running: state.tests_running.load(Ordering::SeqCst),
     };
@@ -315,6 +321,18 @@ pub fn run() {
             warp::warp_disconnect,
             warp::warp_reset_keys,
             warp::warp_set_mode,
+            vpn::vpn_details,
+            vpn::vpn_get_settings,
+            vpn::vpn_save_settings,
+            vpn::vpn_add_subscription,
+            vpn::vpn_update_subscription,
+            vpn::vpn_remove_subscription,
+            vpn::vpn_add_node,
+            vpn::vpn_remove_node,
+            vpn::vpn_select_node,
+            vpn::vpn_ping_nodes,
+            vpn::vpn_connect,
+            vpn::vpn_disconnect,
             autopilot::get_autopilot_status,
             autopilot::run_autopilot_check_now,
             autostart::get_autostart_state,

@@ -116,6 +116,7 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 // Full exit: stop processes we manage; an installed service
                 // is intentionally left running (it is autonomous).
                 let state = app.state::<AppState>();
+                crate::vpn::disconnect_quiet();
                 crate::warp::disconnect_quiet();
                 crate::zapret::process::stop(&state);
                 crate::tg_proxy::kill_all();

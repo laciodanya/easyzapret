@@ -10,6 +10,7 @@ use crate::{logs, paths, settings};
 pub const ZAPRET_REPO: &str = "Flowseal/zapret-discord-youtube";
 pub const TG_REPO: &str = "Flowseal/tg-ws-proxy";
 pub const APP_REPO: &str = "laciodanya/easyzapret";
+pub const XRAY_REPO: &str = "XTLS/Xray-core";
 
 /// User lists and flags that must survive a zapret update.
 const ZAPRET_USER_FILES: &[&str] = &[
@@ -74,12 +75,14 @@ pub struct ComponentsState {
     pub zapret_version: Option<String>,
     pub tg_installed: bool,
     pub tg_version: Option<String>,
+    pub vpn_core_installed: bool,
+    pub vpn_core_version: Option<String>,
     pub data_dir: String,
 }
 
 fn http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
-        .user_agent("EasyZapret/0.5.4 (https://github.com/laciodanya/easyzapret)")
+        .user_agent("EasyZapret/0.6.0 (https://github.com/laciodanya/easyzapret)")
         .build()
         .map_err(|e| e.to_string())
 }
@@ -450,12 +453,49 @@ async fn install_tg(app: &AppHandle) -> Result<String, String> {
     Ok(release.tag_name)
 }
 
+async fn install_xray(app: &AppHandle) -> Result<String, String> {
+    let release = fetch_latest_release(XRAY_REPO).await?;
+    let asset = release
+        .assets
+        .iter()
+        .find(|a| {
+            let n = a.name.to_ascii_lowercase();
+            n.contains("windows") && n.contains("64") && n.ends_with(".zip") && !n.contains("arm")
+        })
+        .ok_or("no Xray-windows-64.zip asset in the latest release")?;
+
+    logs::append("app", &format!("Downloading Xray-core {} ...", release.tag_name));
+    crate::vpn::disconnect_quiet();
+
+    let archive = paths::tmp_dir().join("xray-core.zip");
+    download_file(app, "vpncore", &asset.browser_download_url, &archive).await?;
+
+    let target = paths::vpn_core_dir();
+    let _ = crate::util::force_remove_dir(&target);
+    std::fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+    extract_zip(&archive, &target)?;
+    unblock_files(&target);
+    let _ = std::fs::remove_file(&archive);
+
+    if !paths::vpn_core_exe().exists() {
+        return Err("xray.exe missing after extract".into());
+    }
+
+    let mut s = settings::load();
+    s.vpn_core_version = Some(release.tag_name.clone());
+    settings::save(&s)?;
+
+    logs::append("app", &format!("Xray-core {} installed", release.tag_name));
+    Ok(release.tag_name)
+}
+
 #[tauri::command]
 pub async fn install_component(app: AppHandle, component: String) -> Result<String, String> {
     paths::ensure_dirs().map_err(|e| e.to_string())?;
     let result = match component.as_str() {
         "zapret" => install_zapret(&app).await,
         "tgproxy" => install_tg(&app).await,
+        "vpncore" => install_xray(&app).await,
         _ => Err(format!("unknown component: {component}")),
     };
     let _ = app.emit(
@@ -480,7 +520,9 @@ pub fn get_components_state() -> ComponentsState {
         zapret_installed: paths::zapret_bin_dir().join("winws.exe").exists(),
         zapret_version: installed_zapret_version(),
         tg_installed: paths::tg_exe().exists(),
-        tg_version: s.tg_version,
+        tg_version: s.tg_version.clone(),
+        vpn_core_installed: paths::vpn_core_exe().exists(),
+        vpn_core_version: s.vpn_core_version,
         data_dir: paths::data_dir().to_string_lossy().to_string(),
     }
 }
@@ -492,6 +534,7 @@ pub async fn check_updates() -> Vec<UpdateStatus> {
     for (component, repo, installed) in [
         ("zapret", ZAPRET_REPO, installed_zapret_version()),
         ("tgproxy", TG_REPO, s.tg_version.clone()),
+        ("vpncore", XRAY_REPO, s.vpn_core_version.clone()),
     ] {
         match fetch_latest_release(repo).await {
             Ok(rel) => out.push(UpdateStatus {

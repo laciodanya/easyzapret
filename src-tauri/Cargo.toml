@@ -1,6 +1,6 @@
 [package]
 name = "easyzapret"
-version = "0.5.4"
+version = "0.6.0"
 description = "EasyZapret - desktop manager for Flowseal zapret-discord-youtube and tg-ws-proxy"
 authors = ["EasyZapret"]
 edition = "2021"
@@ -29,6 +29,8 @@ sysinfo = "0.33"
 chrono = "0.4"
 dirs = "5"
 rand = "0.8"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4", "serde"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"

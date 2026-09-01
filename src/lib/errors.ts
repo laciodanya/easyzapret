@@ -15,6 +15,7 @@ const KNOWN_ERRORS = [
   "vpn_core_not_installed",
   "vpn_no_node",
   "vpn_empty_subscription",
+  "vpn_empty_url",
   "vpn_invalid_link",
   "vpn_tun_unavailable",
   "vpn_core_exited",

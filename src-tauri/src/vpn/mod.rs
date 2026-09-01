@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 use crate::{logs, warp, AppState};
 use store::{VpnNode, VpnSettings, VpnState, VpnSubscription};
@@ -239,8 +239,13 @@ fn tcp_ping(addr: &str, port: u16) -> Option<u32> {
 }
 
 #[tauri::command]
-pub fn vpn_connect(state: State<'_, AppState>, node_id: Option<String>) -> Result<(), String> {
-    connect_with_state(&state, node_id)
+pub async fn vpn_connect(app: AppHandle, node_id: Option<String>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<crate::AppState>();
+        connect_with_state(&state, node_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 pub fn connect_with_state(app: &AppState, node_id: Option<String>) -> Result<(), String> {
@@ -351,17 +356,109 @@ pub fn enforce_warp_exclusivity() {
 }
 
 async fn fetch_subscription(url: &str) -> Result<VpnSubscription, String> {
+    let raw = url.trim();
+    if raw.is_empty() {
+        return Err("vpn_empty_url".into());
+    }
+
+    if looks_like_inline_payload(raw) {
+        return subscription_from_payload(raw, raw);
+    }
+
+    let fetch_url = unwrap_subscription_url(raw)?;
+    if looks_like_inline_payload(&fetch_url) {
+        return subscription_from_payload(&fetch_url, raw);
+    }
+
+    let user_agents = [
+        "Happ/3.5.1",
+        "Happ/3.4.0",
+        "v2rayN/6.55",
+        "clash-meta/1.19.0",
+        "Mozilla/5.0",
+    ];
+
+    let mut last_err = "vpn_empty_subscription".to_string();
+    for ua in user_agents {
+        match fetch_subscription_with_ua(&fetch_url, ua).await {
+            Ok(sub) => {
+                let mut sub = sub;
+                sub.url = raw.to_string();
+                return Ok(sub);
+            }
+            Err(e) => last_err = e,
+        }
+    }
+    Err(last_err)
+}
+
+fn looks_like_inline_payload(s: &str) -> bool {
+    let t = s.to_ascii_lowercase();
+    t.contains("vless://")
+        || t.contains("vmess://")
+        || t.contains("trojan://")
+        || t.contains("ss://")
+        || t.contains("socks://")
+        || t.contains("hysteria2://")
+        || t.contains("proxies:")
+}
+
+fn unwrap_subscription_url(raw: &str) -> Result<String, String> {
+    let s = raw.trim();
+    let lower = s.to_ascii_lowercase();
+    if lower.starts_with("sub://") || lower.starts_with("happ://") {
+        let b64 = s.split_once("://").map(|(_, rest)| rest).unwrap_or("");
+        if let Some(decoded) = parse::try_b64(b64) {
+            let decoded = decoded.trim().to_string();
+            if decoded.starts_with("http://") || decoded.starts_with("https://") {
+                return Ok(decoded);
+            }
+            if looks_like_inline_payload(&decoded) {
+                return Ok(decoded);
+            }
+        }
+        return Err("vpn_empty_url".into());
+    }
+    if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+        return Err("vpn_empty_url".into());
+    }
+    Ok(s.to_string())
+}
+
+fn subscription_from_payload(payload: &str, url: &str) -> Result<VpnSubscription, String> {
+    let (meta, mut nodes) = parse::parse_subscription_body(payload, &HashMap::new());
+    if nodes.is_empty() {
+        return Err("vpn_empty_subscription".into());
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    for n in &mut nodes {
+        n.subscription_id = Some(id.clone());
+    }
+    Ok(VpnSubscription {
+        id,
+        url: url.to_string(),
+        name: meta.title.unwrap_or_else(|| "Subscription".into()),
+        updated_at: Some(Utc::now().to_rfc3339()),
+        userinfo: meta.userinfo,
+        announce: meta.announce,
+        support_url: meta.support_url,
+        web_page_url: meta.web_page_url,
+        update_interval_hours: meta.update_interval_hours,
+        nodes,
+    })
+}
+
+async fn fetch_subscription_with_ua(url: &str, ua: &str) -> Result<VpnSubscription, String> {
     let client = reqwest::Client::builder()
-        .user_agent("Happ/3.4.0 EasyZapret/0.6.1")
-        .timeout(Duration::from_secs(25))
-        .redirect(reqwest::redirect::Policy::limited(8))
+        .user_agent(ua)
+        .timeout(Duration::from_secs(40))
+        .redirect(reqwest::redirect::Policy::limited(10))
         .build()
         .map_err(|e| e.to_string())?;
 
     let resp = client
         .get(url)
-        .header("Accept", "text/plain, application/json, */*")
-        .header("User-Agent", "Happ/3.4.0")
+        .header("Accept", "*/*")
         .send()
         .await
         .map_err(|e| format!("network error: {e}"))?;
@@ -376,9 +473,14 @@ async fn fetch_subscription(url: &str) -> Result<VpnSubscription, String> {
             headers.insert(k.as_str().to_string(), val.to_string());
         }
     }
-    let body = resp.text().await.map_err(|e| e.to_string())?;
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    let body = String::from_utf8_lossy(&bytes).into_owned();
     let (meta, mut nodes) = parse::parse_subscription_body(&body, &headers);
     if nodes.is_empty() {
+        logs::append(
+            "vpn",
+            &format!("subscription parse empty ({} bytes, ua={ua})", bytes.len()),
+        );
         return Err("vpn_empty_subscription".into());
     }
 
@@ -390,9 +492,7 @@ async fn fetch_subscription(url: &str) -> Result<VpnSubscription, String> {
     Ok(VpnSubscription {
         id,
         url: url.to_string(),
-        name: meta
-            .title
-            .unwrap_or_else(|| "Subscription".into()),
+        name: meta.title.unwrap_or_else(|| "Subscription".into()),
         updated_at: Some(Utc::now().to_rfc3339()),
         userinfo: meta.userinfo,
         announce: meta.announce,

@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 export function cn(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(" ");
@@ -195,21 +196,37 @@ export function Modal({
   footer?: React.ReactNode;
   wide?: boolean;
 }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center overflow-hidden p-4">
       <div
-        className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm"
+        className="absolute inset-0 bg-slate-950/70 backdrop-blur-md"
         onClick={onClose}
       />
       <div
         className={cn(
-          "ez-fade-up relative z-10 max-h-[85vh] w-full overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl ring-1 ring-black/5 dark:bg-[rgb(var(--surface-elevated))] dark:ring-white/5",
-          wide ? "max-w-2xl" : "max-w-md",
+          "relative z-10 flex w-full max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 dark:bg-[rgb(var(--surface-elevated))] dark:ring-white/5",
+          wide ? "sm:max-w-2xl" : "sm:max-w-md",
+          "max-h-[min(85vh,calc(100vh-2rem))]",
         )}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
       >
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">{title}</h2>
+        <div className="flex shrink-0 items-start justify-between gap-3 px-6 pt-6">
+          <h2 className="min-w-0 break-words text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+            {title}
+          </h2>
           {onClose && (
             <button
               type="button"
@@ -223,10 +240,15 @@ export function Modal({
             </button>
           )}
         </div>
-        <div className="text-sm text-slate-600 dark:text-slate-300">{children}</div>
-        {footer && <div className="mt-5 flex justify-end gap-2">{footer}</div>}
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-6 py-3 text-sm text-slate-600 dark:text-slate-300 [overflow-wrap:anywhere]">
+          {children}
+        </div>
+        {footer && (
+          <div className="flex shrink-0 flex-wrap justify-end gap-2 px-6 pb-6 pt-1">{footer}</div>
+        )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -242,8 +264,8 @@ export function FieldRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-6 py-3">
-      <div className="min-w-0">
+    <div className="flex flex-wrap items-start justify-between gap-4 py-3">
+      <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{title}</div>
         {description && (
           <div className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
@@ -251,7 +273,7 @@ export function FieldRow({
           </div>
         )}
       </div>
-      <div className="shrink-0">{children}</div>
+      <div className="max-w-full">{children}</div>
     </div>
   );
 }

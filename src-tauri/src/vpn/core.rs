@@ -21,21 +21,6 @@ fn xray_log_path() -> std::path::PathBuf {
     paths::logs_dir().join("xray.log")
 }
 
-fn log_looks_fatal(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
-    [
-        "failed to start",
-        "failed to listen",
-        "invalid config",
-        "failed to create tun",
-        "failed to open wintun",
-        "cannot find wintun",
-        "access is denied",
-    ]
-    .iter()
-    .any(|n| lower.contains(n))
-}
-
 pub fn is_running() -> bool {
     let mut guard = VPN_CHILD.lock().unwrap();
     if let Some(child) = guard.as_mut() {
@@ -82,9 +67,8 @@ pub fn start(config_json: &str) -> Result<(), String> {
     *VPN_CHILD.lock().unwrap() = Some(child);
 
     std::thread::sleep(Duration::from_millis(1200));
-    let tail = std::fs::read_to_string(&log_path).unwrap_or_default();
-    if !is_running() || log_looks_fatal(&tail) {
-        stop();
+    if !is_running() {
+        let tail = std::fs::read_to_string(&log_path).unwrap_or_default();
         let last = tail
             .lines()
             .rev()

@@ -5,7 +5,7 @@ export function Toasts() {
   const { toasts, remove } = useToasts();
   if (toasts.length === 0) return null;
   return (
-    <div className="pointer-events-none fixed bottom-5 right-5 z-[60] flex w-80 flex-col gap-2">
+    <div className="pointer-events-none fixed bottom-5 right-5 z-[300] flex w-[min(20rem,calc(100vw-2.5rem))] flex-col gap-2">
       {toasts.map((t) => (
         <button
           key={t.id}

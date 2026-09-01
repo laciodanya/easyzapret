@@ -150,9 +150,7 @@ fn build_outbound(node: &VpnNode, settings: &VpnSettings) -> Result<Value, Strin
         other => return Err(format!("unsupported_protocol:{other}")),
     };
 
-    let network = normalize_network(
-        &pstr(&node.params, &["type", "net", "network"]).unwrap_or_else(|| "tcp".into()),
-    );
+    let network = node_network(node);
     let security = stream_security(node);
     let mux_ok = settings.mux_enabled
         && security != "reality"
@@ -176,18 +174,33 @@ fn build_outbound(node: &VpnNode, settings: &VpnSettings) -> Result<Value, Strin
 }
 
 fn pstr(params: &Value, keys: &[&str]) -> Option<String> {
+    let obj = params.as_object()?;
     for key in keys {
-        if let Some(v) = params.get(*key) {
-            if let Some(s) = v.as_str() {
-                if !s.is_empty() {
-                    return Some(s.to_string());
-                }
-            } else if let Some(n) = v.as_i64() {
-                return Some(n.to_string());
+        let v = obj.get(*key).or_else(|| {
+            obj.iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(key))
+                .map(|(_, val)| val)
+        })?;
+        if let Some(s) = v.as_str() {
+            if !s.is_empty() {
+                return Some(s.to_string());
             }
+        } else if let Some(n) = v.as_i64() {
+            return Some(n.to_string());
+        } else if let Some(b) = v.as_bool() {
+            return Some(b.to_string());
         }
     }
     None
+}
+
+fn node_network(node: &VpnNode) -> String {
+    let raw = if node.protocol == "vmess" {
+        pstr(&node.params, &["net", "network"]).unwrap_or_else(|| "tcp".into())
+    } else {
+        pstr(&node.params, &["type", "net", "network"]).unwrap_or_else(|| "tcp".into())
+    };
+    normalize_network(&raw)
 }
 
 fn normalize_network(raw: &str) -> String {
@@ -213,9 +226,7 @@ fn normalize_security(raw: &str) -> String {
 
 fn stream_security(node: &VpnNode) -> String {
     let params = &node.params;
-    let network = normalize_network(
-        &pstr(params, &["type", "net", "network"]).unwrap_or_else(|| "tcp".into()),
-    );
+    let network = node_network(node);
     if pstr(params, &["pbk", "publickey", "publicKey"]).is_some() {
         return "reality".into();
     }
@@ -230,9 +241,7 @@ fn stream_security(node: &VpnNode) -> String {
 
 fn build_stream(node: &VpnNode, settings: &VpnSettings) -> Value {
     let params = &node.params;
-    let network = normalize_network(
-        &pstr(params, &["type", "net", "network"]).unwrap_or_else(|| "tcp".into()),
-    );
+    let network = node_network(node);
     let security = stream_security(node);
 
     let mut stream = Map::new();
@@ -379,9 +388,7 @@ fn build_vless(node: &VpnNode, settings: &VpnSettings) -> Result<Value, String> 
     let mut user = Map::new();
     user.insert("id".into(), json!(id));
     user.insert("encryption".into(), json!(encryption));
-    let network = normalize_network(
-        &pstr(&node.params, &["type", "net", "network"]).unwrap_or_else(|| "tcp".into()),
-    );
+    let network = node_network(node);
     if let Some(flow) = pstr(&node.params, &["flow"]) {
         // xtls-rprx-vision is TCP/XHTTP only — grpc/ws drop it or the tunnel is dead.
         if matches!(network.as_str(), "tcp" | "raw" | "xhttp") {

@@ -123,11 +123,7 @@ pub fn load() -> VpnState {
     }
     let mut dirty = false;
     for n in &mut state.manual_nodes {
-        let fixed = super::parse::clean_display_name(&n.name);
-        if fixed != n.name {
-            n.name = fixed;
-            dirty = true;
-        }
+        dirty |= normalize_stored_node(n);
     }
     for sub in &mut state.subscriptions {
         let fixed = super::parse::clean_display_name(&sub.name);
@@ -136,17 +132,39 @@ pub fn load() -> VpnState {
             dirty = true;
         }
         for n in &mut sub.nodes {
-            let fixed = super::parse::clean_display_name(&n.name);
-            if fixed != n.name {
-                n.name = fixed;
-                dirty = true;
-            }
+            dirty |= normalize_stored_node(n);
         }
     }
     if dirty {
         let _ = save(&state);
     }
     state
+}
+
+fn normalize_stored_node(n: &mut VpnNode) -> bool {
+    let mut dirty = false;
+    let fixed = super::parse::clean_display_name(&n.name);
+    if fixed != n.name {
+        n.name = fixed;
+        dirty = true;
+    }
+    dirty |= lowercase_node_params(n);
+    dirty
+}
+
+fn lowercase_node_params(n: &mut VpnNode) -> bool {
+    let Some(obj) = n.params.as_object() else {
+        return false;
+    };
+    if obj.keys().all(|k| k.bytes().all(|b| !b.is_ascii_uppercase())) {
+        return false;
+    }
+    let mut out = serde_json::Map::new();
+    for (k, v) in obj {
+        out.entry(k.to_ascii_lowercase()).or_insert(v.clone());
+    }
+    n.params = serde_json::Value::Object(out);
+    true
 }
 
 pub fn save(state: &VpnState) -> Result<(), String> {

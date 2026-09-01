@@ -32,6 +32,7 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
   const [confirmDiscord, setConfirmDiscord] = useState(false);
   const [hosts, setHosts] = useState<HostsCheck | null>(null);
   const [diag, setDiag] = useState<DiagItem[] | null>(null);
+  const [diagOpen, setDiagOpen] = useState(false);
 
   const zapret = status?.zapret;
 
@@ -302,63 +303,74 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
       {/* Diagnostics */}
       <Card className="mb-4">
         <FieldRow title={t("service.diagnostics")} description={t("service.diagnosticsDesc")}>
-          <Button
-            variant="primary"
-            disabled={busy !== null}
-            onClick={() =>
-              run("diag", async () => {
-                setDiag(await api.runDiagnostics());
-              })
-            }
-          >
-            {busy === "diag" ? <Spinner /> : null}
-            {t("service.runDiagnostics")}
-          </Button>
-        </FieldRow>
-
-        {diag && (
-          <div className="mt-2 space-y-1.5">
-            {diag.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800/50"
-              >
-                <StatusDot tone={item.status === "ok" ? "ok" : item.status === "warn" ? "warn" : "fail"} />
-                <span className="font-medium text-slate-700 dark:text-slate-200">
-                  {t(`service.diag.${item.id}`, { defaultValue: item.id })}
-                </span>
-                {item.detail && (
-                  <span className="min-w-0 flex-1 truncate text-right text-xs text-slate-400" title={item.detail}>
-                    {item.detail}
-                  </span>
-                )}
-              </div>
-            ))}
-            <div className="flex flex-wrap gap-2 pt-2">
-              {diag.some((d) => d.id === "conflicting_bypasses" && d.status === "fail") && (
-                <Button
-                  variant="danger"
-                  disabled={busy !== null}
-                  onClick={() =>
-                    run("conflicts", async () => {
-                      const removed = await api.removeConflictingServices();
-                      toast(t("service.conflictsRemoved", { list: removed.join(", ") || "—" }), "ok");
-                      setDiag(await api.runDiagnostics());
-                    })
-                  }
-                >
-                  {t("service.removeConflicts")}
-                </Button>
-              )}
-              <Button disabled={busy !== null} onClick={() => setConfirmDiscord(true)}>
-                {t("service.clearDiscordCache")}
-              </Button>
-            </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="primary"
+              disabled={busy !== null}
+              onClick={() =>
+                run("diag", async () => {
+                  setDiag(await api.runDiagnostics());
+                  setDiagOpen(true);
+                })
+              }
+            >
+              {busy === "diag" ? <Spinner /> : null}
+              {t("service.runDiagnostics")}
+            </Button>
+            <Button disabled={busy !== null} onClick={() => setConfirmDiscord(true)}>
+              {t("service.clearDiscordCache")}
+            </Button>
           </div>
-        )}
+        </FieldRow>
       </Card>
 
       {/* Confirmations */}
+      <Modal
+        open={diagOpen && diag !== null}
+        onClose={() => setDiagOpen(false)}
+        title={t("service.diagnostics")}
+        wide
+        footer={
+          <>
+            {diag?.some((d) => d.id === "conflicting_bypasses" && d.status === "fail") && (
+              <Button
+                variant="danger"
+                disabled={busy !== null}
+                onClick={() =>
+                  run("conflicts", async () => {
+                    const removed = await api.removeConflictingServices();
+                    toast(t("service.conflictsRemoved", { list: removed.join(", ") || "—" }), "ok");
+                    setDiag(await api.runDiagnostics());
+                  })
+                }
+              >
+                {t("service.removeConflicts")}
+              </Button>
+            )}
+            <Button onClick={() => setDiagOpen(false)}>{t("common.close")}</Button>
+          </>
+        }
+      >
+        <div className="space-y-1.5">
+          {(diag ?? []).map((item) => (
+            <div
+              key={item.id}
+              className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800/50"
+            >
+              <StatusDot tone={item.status === "ok" ? "ok" : item.status === "warn" ? "warn" : "fail"} />
+              <div className="min-w-0 flex-1">
+                <div className="font-medium text-slate-700 dark:text-slate-200">
+                  {t(`service.diag.${item.id}`, { defaultValue: item.id })}
+                </div>
+                {item.detail ? (
+                  <div className="mt-0.5 break-words text-xs text-slate-400">{item.detail}</div>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Modal>
+
       <Modal
         open={confirmRemove}
         onClose={() => setConfirmRemove(false)}

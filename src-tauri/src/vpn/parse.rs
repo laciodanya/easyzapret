@@ -48,10 +48,41 @@ pub fn parse_subscription_body(body: &str, headers: &HashMap<String, String>) ->
         meta.announce = Some(decode_maybe_base64(&announce));
     }
 
-    let text = decode_subscription_payload(body);
+    let mut nodes = collect_nodes(body);
+    if nodes.is_empty() {
+        if let Some(decoded) = try_b64(body.trim()) {
+            nodes = collect_nodes(&decoded);
+        }
+    }
+
+    (meta, nodes)
+}
+
+fn collect_nodes(text: &str) -> Vec<VpnNode> {
+    let decoded = decode_subscription_payload(text);
+    let mut nodes = nodes_from_lines(&decoded);
+    if nodes.is_empty() {
+        nodes = nodes_from_lines(text);
+    }
+    if nodes.is_empty() {
+        nodes = extract_share_link_nodes(&decoded);
+    }
+    if nodes.is_empty() {
+        nodes = extract_share_link_nodes(text);
+    }
+    if nodes.is_empty() {
+        nodes = parse_clash_proxies(&decoded);
+    }
+    if nodes.is_empty() {
+        nodes = parse_clash_proxies(text);
+    }
+    nodes
+}
+
+fn nodes_from_lines(text: &str) -> Vec<VpnNode> {
     let mut nodes = Vec::new();
     for line in text.lines() {
-        let line = line.trim();
+        let line = line.trim().trim_start_matches('\u{feff}');
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
@@ -65,7 +96,6 @@ pub fn parse_subscription_body(body: &str, headers: &HashMap<String, String>) ->
             }
         }
     }
-
     if nodes.is_empty() {
         if let Ok(arr) = serde_json::from_str::<Vec<Value>>(text.trim()) {
             for v in arr {
@@ -75,8 +105,264 @@ pub fn parse_subscription_body(body: &str, headers: &HashMap<String, String>) ->
             }
         }
     }
+    nodes
+}
 
-    (meta, nodes)
+const SHARE_SCHEMES: &[&str] = &[
+    "vless://",
+    "vmess://",
+    "trojan://",
+    "ss://",
+    "socks://",
+    "socks5://",
+    "hysteria2://",
+    "hy2://",
+    "wireguard://",
+];
+
+fn extract_share_link_nodes(text: &str) -> Vec<VpnNode> {
+    let mut nodes = Vec::new();
+    let lower = text.to_ascii_lowercase();
+    let mut i = 0;
+    while i < lower.len() {
+        let Some(rel) = SHARE_SCHEMES
+            .iter()
+            .filter_map(|s| lower[i..].find(s).map(|p| (p, s.len())))
+            .min_by_key(|(p, _)| *p)
+        else {
+            break;
+        };
+        let start = i + rel.0;
+        let rest = &text[start..];
+        let end_rel = rest
+            .find(|c: char| c.is_whitespace() || matches!(c, '<' | '>' | '"' | '\'' | '`'))
+            .unwrap_or(rest.len());
+        let link = rest[..end_rel]
+            .trim_end_matches(['.', ')', ']', ',', ';'])
+            .replace("&amp;", "&");
+        if let Some(node) = parse_share_link(&link) {
+            nodes.push(node);
+        }
+        i = start + end_rel.max(1);
+    }
+    nodes
+}
+
+fn parse_clash_proxies(text: &str) -> Vec<VpnNode> {
+    if let Ok(v) = serde_json::from_str::<Value>(text.trim()) {
+        let arr = v
+            .get("proxies")
+            .and_then(|x| x.as_array())
+            .cloned()
+            .or_else(|| v.as_array().cloned());
+        if let Some(arr) = arr {
+            return arr.iter().filter_map(clash_proxy_to_node).collect();
+        }
+    }
+    if !text.contains("type:") && !text.contains("type: ") {
+        return Vec::new();
+    }
+    let mut nodes = Vec::new();
+    let mut current = HashMap::<String, String>::new();
+    let mut nest = String::new();
+    let flush = |map: &mut HashMap<String, String>, nodes: &mut Vec<VpnNode>| {
+        if map.get("server").is_some() && map.get("type").is_some() {
+            if let Some(n) = clash_map_to_node(map) {
+                nodes.push(n);
+            }
+        }
+        map.clear();
+    };
+    for line in text.lines() {
+        let indent = line.chars().take_while(|c| *c == ' ' || *c == '\t').count();
+        let t = line.trim();
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        if t.starts_with("- ") && indent <= 4 {
+            flush(&mut current, &mut nodes);
+            nest.clear();
+            let rest = t[2..].trim();
+            if rest.starts_with('{') {
+                if let Ok(v) = serde_json::from_str::<Value>(rest) {
+                    if let Some(n) = clash_proxy_to_node(&v) {
+                        nodes.push(n);
+                    }
+                }
+            } else if let Some((k, v)) = rest.split_once(':') {
+                current.insert(k.trim().to_ascii_lowercase(), yaml_unquote(v));
+            }
+            continue;
+        }
+        if let Some((k, v)) = t.split_once(':') {
+            let key = k.trim().to_ascii_lowercase();
+            let val = yaml_unquote(v);
+            if val.is_empty() {
+                nest = format!("{key}-");
+            } else if indent >= 4 && !nest.is_empty() {
+                current.insert(format!("{nest}{key}"), val);
+            } else {
+                nest.clear();
+                current.insert(key, val);
+            }
+        }
+    }
+    flush(&mut current, &mut nodes);
+    nodes
+}
+
+fn yaml_unquote(s: &str) -> String {
+    s.trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .to_string()
+}
+
+fn clash_proxy_to_node(v: &Value) -> Option<VpnNode> {
+    let obj = v.as_object()?;
+    let mut map = HashMap::new();
+    for (k, val) in obj {
+        let key = k.to_ascii_lowercase();
+        match val {
+            Value::String(s) => {
+                map.insert(key, s.clone());
+            }
+            Value::Number(n) => {
+                map.insert(key, n.to_string());
+            }
+            Value::Bool(b) => {
+                map.insert(key, b.to_string());
+            }
+            Value::Object(inner) => {
+                for (ik, iv) in inner {
+                    let ik = ik.to_ascii_lowercase();
+                    let vs = iv.as_str().map(|s| s.to_string()).or_else(|| {
+                        iv.as_i64().map(|n| n.to_string())
+                    });
+                    if let Some(vs) = vs {
+                        map.insert(format!("{key}-{ik}"), vs);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    clash_map_to_node(&map)
+}
+
+fn clash_map_to_node(map: &HashMap<String, String>) -> Option<VpnNode> {
+    let proto = map.get("type")?.to_ascii_lowercase();
+    let address = map.get("server")?.clone();
+    let port: u16 = map.get("port")?.parse().ok()?;
+    let name = map
+        .get("name")
+        .cloned()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("{address}:{port}"));
+    let mut params = serde_json::Map::new();
+    let protocol = match proto.as_str() {
+        "vless" => {
+            let id = map.get("uuid").or_else(|| map.get("id"))?.clone();
+            params.insert("id".into(), Value::String(id));
+            "vless"
+        }
+        "vmess" => {
+            let id = map.get("uuid").or_else(|| map.get("id"))?.clone();
+            params.insert("id".into(), Value::String(id));
+            if let Some(aid) = map.get("alterid").or_else(|| map.get("aid")) {
+                params.insert("aid".into(), Value::String(aid.clone()));
+            }
+            if let Some(scy) = map.get("cipher").or_else(|| map.get("scy")) {
+                params.insert("scy".into(), Value::String(scy.clone()));
+            }
+            "vmess"
+        }
+        "trojan" => {
+            params.insert(
+                "password".into(),
+                Value::String(map.get("password")?.clone()),
+            );
+            "trojan"
+        }
+        "ss" | "shadowsocks" => {
+            params.insert("method".into(), Value::String(map.get("cipher")?.clone()));
+            params.insert(
+                "password".into(),
+                Value::String(map.get("password")?.clone()),
+            );
+            "shadowsocks"
+        }
+        "socks" | "socks5" => "socks",
+        _ => return None,
+    };
+    if protocol == "socks" {
+        if let Some(u) = map.get("username") {
+            params.insert("user".into(), Value::String(u.clone()));
+        }
+        if let Some(p) = map.get("password") {
+            params.insert("pass".into(), Value::String(p.clone()));
+        }
+    }
+    let net = map
+        .get("network")
+        .cloned()
+        .unwrap_or_else(|| "tcp".into());
+    params.insert("type".into(), Value::String(net.clone()));
+    if proto == "vmess" {
+        params.insert("net".into(), Value::String(net));
+    }
+    if let Some(sni) = map.get("servername").or_else(|| map.get("sni")) {
+        params.insert("sni".into(), Value::String(sni.clone()));
+    }
+    if let Some(host) = map.get("host").or_else(|| map.get("ws-opts-headers-host")) {
+        params.insert("host".into(), Value::String(host.clone()));
+    }
+    if let Some(path) = map.get("path").or_else(|| map.get("ws-opts-path")) {
+        params.insert("path".into(), Value::String(path.clone()));
+    }
+    if let Some(svc) = map
+        .get("servicename")
+        .or_else(|| map.get("grpc-opts-grpc-service-name"))
+        .or_else(|| map.get("grpc-service-name"))
+    {
+        params.insert("servicename".into(), Value::String(svc.clone()));
+    }
+    if let Some(fp) = map.get("client-fingerprint").or_else(|| map.get("fp")) {
+        params.insert("fp".into(), Value::String(fp.clone()));
+    }
+    if let Some(flow) = map.get("flow") {
+        params.insert("flow".into(), Value::String(flow.clone()));
+    }
+    if let Some(pbk) = map
+        .get("pbk")
+        .or_else(|| map.get("reality-opts-public-key"))
+        .or_else(|| map.get("public-key"))
+    {
+        params.insert("pbk".into(), Value::String(pbk.clone()));
+        params.insert("security".into(), Value::String("reality".into()));
+    } else if map.get("tls").map(|s| s == "true" || s == "1").unwrap_or(false)
+        || proto == "trojan"
+    {
+        params.insert("security".into(), Value::String("tls".into()));
+    }
+    if let Some(sid) = map
+        .get("sid")
+        .or_else(|| map.get("reality-opts-short-id"))
+        .or_else(|| map.get("short-id"))
+    {
+        params.insert("sid".into(), Value::String(sid.clone()));
+    }
+    if let Some(enc) = map.get("encryption") {
+        params.insert("encryption".into(), Value::String(enc.clone()));
+    }
+    Some(new_node(
+        protocol,
+        &name,
+        &address,
+        port,
+        &format!("clash:{protocol}:{address}:{port}"),
+        Value::Object(params),
+    ))
 }
 
 fn header_ci(headers: &HashMap<String, String>, key: &str) -> Option<String> {
@@ -141,20 +427,17 @@ fn parse_userinfo(raw: Option<String>) -> Option<VpnUserInfo> {
 }
 
 fn decode_subscription_payload(body: &str) -> String {
-    let trimmed = body.trim();
-    if trimmed.contains("://") || trimmed.starts_with('{') || trimmed.starts_with('[') || trimmed.starts_with('#')
-    {
-        return body.to_string();
-    }
+    let trimmed = body.trim().trim_start_matches('\u{feff}');
     if let Some(decoded) = try_b64(trimmed) {
-        if decoded.contains("://") || decoded.starts_with('{') || decoded.starts_with('[') {
+        if decoded.contains("://") || decoded.contains("proxies:") || decoded.starts_with('{') || decoded.starts_with('[')
+        {
             return decoded;
         }
     }
     body.to_string()
 }
 
-fn try_b64(s: &str) -> Option<String> {
+pub(crate) fn try_b64(s: &str) -> Option<String> {
     let cleaned: String = s.chars().filter(|c| !c.is_whitespace()).collect();
     for eng in [&STANDARD, &URL_SAFE_NO_PAD, &URL_SAFE] {
         let mut padded = cleaned.clone();
@@ -596,5 +879,41 @@ mod tests {
         assert!(fixed.contains('\u{1f1e9}'), "{fixed:?}");
         assert!(fixed.contains("DE"));
         assert!(!fixed.contains('ð'));
+    }
+
+    #[test]
+    fn extracts_vless_from_html_wrapper() {
+        let html = "<html><body>copy <a>vless://11111111-1111-1111-1111-111111111111@de.example.com:443?encryption=none&security=reality&pbk=KEY&type=grpc&serviceName=Tune#DE</a></body>";
+        let (_, nodes) = parse_subscription_body(html, &HashMap::new());
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].address, "de.example.com");
+        assert_eq!(nodes[0].params["type"], "grpc");
+    }
+
+    #[test]
+    fn parses_clash_yaml_vless_reality() {
+        let yaml = r#"
+proxies:
+  - name: "🇩🇪 Germany"
+    type: vless
+    server: de.example.com
+    port: 443
+    uuid: 11111111-1111-1111-1111-111111111111
+    network: grpc
+    tls: true
+    servername: www.microsoft.com
+    client-fingerprint: chrome
+    reality-opts:
+      public-key: PUBLICKEY
+      short-id: abcd
+    grpc-opts:
+      grpc-service-name: Tune
+"#;
+        let (_, nodes) = parse_subscription_body(yaml, &HashMap::new());
+        assert_eq!(nodes.len(), 1, "{nodes:?}");
+        assert_eq!(nodes[0].protocol, "vless");
+        assert_eq!(nodes[0].params["security"], "reality");
+        assert_eq!(nodes[0].params["servicename"], "Tune");
+        assert_eq!(nodes[0].params["pbk"], "PUBLICKEY");
     }
 }

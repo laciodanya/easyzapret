@@ -528,13 +528,13 @@ export function VpnPage() {
         }
       >
         <p className="mb-3 text-sm text-[rgb(var(--text-secondary))]">{t("vpn.addSubHint")}</p>
-        <input
+        <textarea
           autoFocus
-          className="w-full rounded-xl border border-[rgb(var(--border))] bg-transparent px-3 py-2.5 text-sm"
-          placeholder="https://…"
+          rows={3}
+          className="box-border max-w-full min-w-0 w-full rounded-xl border border-[rgb(var(--border))] bg-transparent px-3 py-2.5 text-sm [overflow-wrap:anywhere]"
+          placeholder="https://…  or  vless://…"
           value={subUrl}
           onChange={(e) => setSubUrl(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && void addSubscription()}
         />
       </Modal>
 
@@ -556,7 +556,7 @@ export function VpnPage() {
         <textarea
           autoFocus
           rows={4}
-          className="w-full rounded-xl border border-[rgb(var(--border))] bg-transparent px-3 py-2.5 font-mono text-xs"
+          className="box-border max-w-full min-w-0 w-full rounded-xl border border-[rgb(var(--border))] bg-transparent px-3 py-2.5 font-mono text-xs [overflow-wrap:anywhere]"
           placeholder="vless://… / vmess://… / trojan://… / ss://"
           value={nodeLink}
           onChange={(e) => setNodeLink(e.target.value)}

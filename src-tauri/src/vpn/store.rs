@@ -47,7 +47,7 @@ pub struct VpnSubscription {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct VpnSettings {
-    /// system-proxy | tun (tun reserved / experimental)
+    /// system-proxy | tun
     pub mode: String,
     pub socks_port: u16,
     pub http_port: u16,

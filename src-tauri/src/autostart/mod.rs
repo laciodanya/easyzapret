@@ -31,13 +31,6 @@ const RUN_SUBKEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const STARTUP_APPROVED_SUBKEY: &str =
     r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
 
-/// Marker so 0.5.3+ enables login autostart once for existing installs,
-/// without fighting the user if they later turn it off.
-#[cfg(windows)]
-fn login_enable_marker() -> std::path::PathBuf {
-    paths::data_dir().join(".autostart-login-enabled")
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutostartState {
@@ -211,31 +204,18 @@ pub fn apply_launch_at_login(enable: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Called once from `setup`: turn login autostart on for every 0.5.3+ user,
-/// then keep the logon task in sync with the current exe path.
+/// Called from `setup`: never register a logon task here. Creating
+/// `schtasks` on every launch is a Defender Behavior:Persistence.A!ml hit.
+/// The task is created only when the user turns the setting on.
 pub fn ensure_on_app_start() {
     #[cfg(windows)]
     {
         let _ = paths::ensure_dirs();
-        let marker = login_enable_marker();
-        let mut s = settings::load();
-        if !marker.exists() {
-            s.autostart.launch_at_login = true;
-            if let Err(e) = settings::save(&s) {
-                logs::append("app", &format!("autostart: failed to save default on — {e}"));
+        let s = settings::load();
+        if !s.autostart.launch_at_login && login_entry_exists() {
+            if let Err(e) = set_login_entry(false) {
+                logs::append("app", &format!("autostart: could not remove logon task — {e}"));
             }
-            if let Err(e) = std::fs::write(&marker, "1") {
-                logs::append("app", &format!("autostart: failed to write marker — {e}"));
-            }
-            logs::append("app", "autostart: launch at login enabled for this version");
-        }
-        match set_login_entry(s.autostart.launch_at_login) {
-            Ok(()) => {
-                if s.autostart.launch_at_login {
-                    logs::append("app", "autostart: logon task registered");
-                }
-            }
-            Err(e) => logs::append("app", &format!("autostart: logon task failed — {e}")),
         }
     }
 }

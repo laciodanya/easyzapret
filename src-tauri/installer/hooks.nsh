@@ -5,14 +5,13 @@
 ;
 ; Autostart cannot use the Run key: the exe requires administrator rights, and
 ; Explorer will not launch requireAdministrator binaries at logon. A scheduled
-; task with /RL HIGHEST is created instead.
+; task is created only if the user enables launch-at-login in Settings — never
+; from the installer (Defender flags silent schtasks as Persistence.A!ml).
 
 !macro NSIS_HOOK_POSTINSTALL
-  DetailPrint "Removing leftover Run-key autostart..."
+  DetailPrint "Removing leftover autostart entries..."
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "EasyZapret"
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "EasyZapret"
-  DetailPrint "Registering EasyZapret logon task..."
-  nsExec::ExecToLog 'schtasks /Create /F /RL HIGHEST /SC ONLOGON /DELAY 0000:15 /TN "EasyZapret" /TR "\"$INSTDIR\EasyZapret.exe\""'
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL

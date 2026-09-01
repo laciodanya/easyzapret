@@ -126,7 +126,7 @@ function defaultAutopilot(): AutopilotSettings {
 
 function defaultAutostart(): AutostartSettings {
   return {
-    launchAtLogin: true,
+    launchAtLogin: false,
     autoStartZapret: false,
     autoStartWarp: false,
     autoStartTg: false,

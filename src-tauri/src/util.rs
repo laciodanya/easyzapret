@@ -39,10 +39,15 @@ pub fn hidden_command_async(program: &str) -> tokio::process::Command {
     cmd
 }
 
-/// Best-effort recursive delete. On Windows tries PowerShell `Remove-Item
-/// -Force` first, which copes better with read-only files than `remove_dir_all`.
+/// Best-effort recursive delete. Prefers `remove_dir_all`; PowerShell only
+/// if Windows still holds the tree (read-only / locked files).
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn force_remove_dir(path: &std::path::Path) -> Result<(), String> {
+    match std::fs::remove_dir_all(path) {
+        Ok(()) => return Ok(()),
+        Err(_) if !path.exists() => return Ok(()),
+        Err(_) => {}
+    }
     #[cfg(windows)]
     {
         let script = format!(
@@ -53,15 +58,10 @@ pub fn force_remove_dir(path: &std::path::Path) -> Result<(), String> {
             "powershell",
             &["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script],
         );
-        if ok {
+        if ok || !path.exists() {
             return Ok(());
         }
-        if !path.exists() {
-            return Ok(());
-        }
-        return std::fs::remove_dir_all(path).map_err(|e| {
-            format!("{e}; powershell: {}", out.trim())
-        });
+        return Err(format!("failed to remove {}: {}", path.display(), out.trim()));
     }
     #[cfg(not(windows))]
     {

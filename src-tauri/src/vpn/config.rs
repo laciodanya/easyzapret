@@ -14,7 +14,7 @@ pub fn build_config(node: &VpnNode, settings: &VpnSettings) -> Result<Value, Str
             "listen": "127.0.0.1",
             "protocol": "socks",
             "settings": { "udp": true, "auth": "noauth" },
-            "sniffing": sniffing(settings)
+            "sniffing": sniffing(settings, false)
         }),
         json!({
             "tag": "http-in",
@@ -22,24 +22,27 @@ pub fn build_config(node: &VpnNode, settings: &VpnSettings) -> Result<Value, Str
             "listen": "127.0.0.1",
             "protocol": "http",
             "settings": { "allowTransparent": false },
-            "sniffing": sniffing(settings)
+            "sniffing": sniffing(settings, false)
         }),
     ];
 
     if settings.mode == "tun" {
+        // Official Xray TUN (xtls.github.io): Wintun adapter + system default
+        // routes. Without autoSystemRoutingTable the NIC exists but traffic
+        // never enters Xray — IP stays the same.
         inbounds.push(json!({
             "tag": "tun-in",
             "protocol": "tun",
             "settings": {
                 "name": "xray0",
-                "desc": "EasyZapret",
+                "desc": "Wintun",
                 "mtu": 1500,
-                "gateway": ["10.10.0.1/24"],
-                "dns": [settings.dns.clone()],
-                "autoSystemRoutingTable": ["0.0.0.0/0"],
+                "gateway": ["10.0.0.1/16", "fc00::1/64"],
+                "dns": [settings.dns.clone(), "8.8.8.8"],
+                "autoSystemRoutingTable": ["0.0.0.0/0", "::/0"],
                 "autoOutboundsInterface": "auto"
             },
-            "sniffing": sniffing(settings)
+            "sniffing": sniffing(settings, true)
         }));
     }
 
@@ -120,11 +123,11 @@ pub fn build_config(node: &VpnNode, settings: &VpnSettings) -> Result<Value, Str
     }))
 }
 
-fn sniffing(settings: &VpnSettings) -> Value {
+fn sniffing(settings: &VpnSettings, tun: bool) -> Value {
     json!({
         "enabled": settings.sniffing,
         "destOverride": ["http", "tls", "quic"],
-        "routeOnly": true
+        "routeOnly": !tun
     })
 }
 
@@ -535,11 +538,18 @@ mod tests {
                 .is_none(),
             "vision flow is invalid on grpc"
         );
-        assert!(cfg["inbounds"]
+        let tun = cfg["inbounds"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|i| i["protocol"] == "tun"));
+            .find(|i| i["protocol"] == "tun")
+            .expect("tun inbound");
+        assert_eq!(tun["settings"]["name"], "xray0");
+        assert_eq!(tun["settings"]["desc"], "Wintun");
+        assert_eq!(tun["settings"]["autoOutboundsInterface"], "auto");
+        let routes = tun["settings"]["autoSystemRoutingTable"].as_array().unwrap();
+        assert!(routes.iter().any(|r| r == "0.0.0.0/0"));
+        assert!(routes.iter().any(|r| r == "::/0"));
     }
 
     #[test]

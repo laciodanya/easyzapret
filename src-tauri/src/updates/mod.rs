@@ -270,22 +270,61 @@ fn restore_user_files(saved: &[(String, PathBuf)]) {
     }
 }
 
-/// Best-effort removal of the NTFS Mark-of-the-Web from extracted files
-/// ("Unblock" in file properties), so SmartScreen does not block winws.exe.
+/// Best-effort removal of the NTFS Mark-of-the-Web without PowerShell.
 fn unblock_files(dir: &Path) {
-    #[cfg(windows)]
-    {
-        let script = format!(
-            "Get-ChildItem -Recurse -LiteralPath '{}' | Unblock-File",
-            dir.display()
-        );
-        let _ = crate::util::hidden_command("powershell")
-            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
-            .output();
+    fn strip_motw(path: &Path) {
+        let ads = format!("{}:Zone.Identifier", path.display());
+        let _ = std::fs::remove_file(&ads);
     }
-    #[cfg(not(windows))]
-    {
-        let _ = dir;
+    fn walk(dir: &Path) {
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                walk(&p);
+            } else {
+                strip_motw(&p);
+            }
+        }
+    }
+    walk(dir);
+}
+
+fn flatten_xray_layout(dir: &Path) {
+    fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
+        let direct = dir.join(name);
+        if direct.exists() {
+            return Some(direct);
+        }
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return None;
+        };
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                if let Some(found) = find_file(&p, name) {
+                    return Some(found);
+                }
+            } else if p.file_name().and_then(|n| n.to_str()).map(|n| n.eq_ignore_ascii_case(name)).unwrap_or(false)
+            {
+                return Some(p);
+            }
+        }
+        None
+    }
+
+    let exe_name = if cfg!(windows) { "xray.exe" } else { "xray" };
+    if let Some(exe) = find_file(dir, exe_name) {
+        if exe.parent() != Some(dir) {
+            let _ = std::fs::copy(&exe, dir.join(exe_name));
+        }
+    }
+    if let Some(dll) = find_file(dir, "wintun.dll") {
+        if dll.parent() != Some(dir) {
+            let _ = std::fs::copy(&dll, dir.join("wintun.dll"));
+        }
     }
 }
 
@@ -474,6 +513,7 @@ async fn install_xray(app: &AppHandle) -> Result<String, String> {
     let _ = crate::util::force_remove_dir(&target);
     std::fs::create_dir_all(&target).map_err(|e| e.to_string())?;
     extract_zip(&archive, &target)?;
+    flatten_xray_layout(&target);
     unblock_files(&target);
     let _ = std::fs::remove_file(&archive);
 

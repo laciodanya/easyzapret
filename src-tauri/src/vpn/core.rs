@@ -66,22 +66,60 @@ pub fn start(config_json: &str) -> Result<(), String> {
     let child = cmd.spawn().map_err(|e| format!("failed to start xray: {e}"))?;
     *VPN_CHILD.lock().unwrap() = Some(child);
 
-    std::thread::sleep(Duration::from_millis(1200));
+    std::thread::sleep(Duration::from_millis(1500));
     if !is_running() {
-        let tail = std::fs::read_to_string(&log_path).unwrap_or_default();
-        let last = tail
-            .lines()
-            .rev()
-            .take(10)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>();
-        logs::append("vpn", &format!("Xray failed: {}", last.join(" | ")));
+        logs::append("vpn", &format!("Xray failed: {}", last_log_tail(10)));
         return Err("vpn_core_exited".into());
     }
     logs::append("vpn", "Xray core started");
     Ok(())
+}
+
+pub fn inbound_listening(port: u16) -> bool {
+    use std::net::{TcpStream, ToSocketAddrs};
+    use std::time::Duration as StdDuration;
+    let Ok(mut addrs) = ("127.0.0.1", port).to_socket_addrs() else {
+        return false;
+    };
+    let Some(addr) = addrs.next() else {
+        return false;
+    };
+    TcpStream::connect_timeout(&addr, StdDuration::from_millis(400)).is_ok()
+}
+
+pub fn last_log_tail(n: usize) -> String {
+    let tail = std::fs::read_to_string(xray_log_path()).unwrap_or_default();
+    tail.lines()
+        .rev()
+        .take(n)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
+/// True when the Wintun adapter exists *and* the default route points at it.
+/// An adapter without 0.0.0.0/0 means old Xray / failed autoSystemRoutingTable
+/// — traffic never enters the tunnel.
+pub fn tun_ready() -> bool {
+    #[cfg(windows)]
+    {
+        std::thread::sleep(Duration::from_millis(2000));
+        let (_, ifaces) = util::run_capture("netsh", &["interface", "show", "interface"]);
+        let ifaces = ifaces.to_ascii_lowercase();
+        if !(ifaces.contains("xray0") || ifaces.contains("wintun")) {
+            return false;
+        }
+        let (_, routes) = util::run_capture("netsh", &["interface", "ipv4", "show", "route"]);
+        routes.to_ascii_lowercase().lines().any(|line| {
+            line.contains("0.0.0.0/0") && (line.contains("xray0") || line.contains("wintun"))
+        })
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
 }
 
 pub fn stop() {

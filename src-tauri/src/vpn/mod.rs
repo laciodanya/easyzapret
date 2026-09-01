@@ -268,12 +268,9 @@ pub fn connect_with_state(app: &AppState, node_id: Option<String>) -> Result<(),
 
     sysproxy::disable_system_proxy();
 
-    let mut used_mode = vpn.settings.mode.clone();
-    let mut settings = vpn.settings.clone();
-    if used_mode != "system-proxy" {
-        used_mode = "tun".into();
-        settings.mode = "tun".into();
-    }
+    let preferred = vpn.settings.mode.clone();
+    let try_tun = preferred != "system-proxy";
+    let settings = vpn.settings.clone();
 
     let start_with = |mode: &str| -> Result<(), String> {
         let mut s = settings.clone();
@@ -283,14 +280,28 @@ pub fn connect_with_state(app: &AppState, node_id: Option<String>) -> Result<(),
         core::start(&cfg_text)
     };
 
-    if used_mode == "tun" {
+    let mut used_mode = if try_tun {
+        "tun".to_string()
+    } else {
+        "system-proxy".to_string()
+    };
+
+    if try_tun {
         let tun_err = if !core::wintun_available() {
             Some("wintun.dll missing".to_string())
+        } else if let Err(e) = start_with("tun") {
+            Some(e)
+        } else if !core::tun_ready() {
+            Some(format!("tun route missing: {}", core::last_log_tail(8)))
         } else {
-            start_with("tun").err()
+            None
         };
         if let Some(e) = tun_err {
-            logs::append("vpn", &format!("TUN start failed ({e}) — falling back to system proxy"));
+            logs::append(
+                "vpn",
+                &format!("TUN unavailable ({e}) — WinINet system proxy"),
+            );
+            core::stop();
             start_with("system-proxy")?;
             used_mode = "system-proxy".into();
         }
@@ -298,11 +309,17 @@ pub fn connect_with_state(app: &AppState, node_id: Option<String>) -> Result<(),
         start_with("system-proxy")?;
     }
 
-    // Browsers ignore TUN unless WinINET is also pointed at local Xray.
-    sysproxy::enable_system_proxy(vpn.settings.http_port, vpn.settings.socks_port)?;
+    if !core::inbound_listening(vpn.settings.http_port) {
+        core::stop();
+        return Err("vpn_core_exited".into());
+    }
+
+    // Happ/v2rayN: TUN and system proxy are independent. Mixing them loops traffic.
+    if used_mode == "system-proxy" {
+        sysproxy::enable_system_proxy(vpn.settings.http_port, vpn.settings.socks_port)?;
+    }
 
     vpn.selected_node_id = Some(id);
-    vpn.settings.mode = used_mode.clone();
     store::save(&vpn)?;
     app.vpn_active.store(true, std::sync::atomic::Ordering::SeqCst);
     logs::append("vpn", &format!("Connected ({used_mode}) → {}", node.name));

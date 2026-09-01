@@ -233,7 +233,7 @@ export function SettingsPage() {
         </p>
         <FieldRow title={t("settings.launchAtLogin")} description={t("settings.launchAtLoginDesc")}>
           <Switch
-            checked={settings?.autostart.launchAtLogin ?? true}
+            checked={settings?.autostart.launchAtLogin ?? false}
             onChange={async (v) => {
               try {
                 await updateAutostart({ launchAtLogin: v });

@@ -69,12 +69,14 @@ pub struct VpnSettings {
     pub routing_enabled: bool,
     /// last-used | lowest-delay | manual
     pub select_strategy: String,
+    /// Bumps used to migrate 0.6.0 system-proxy default to TUN.
+    pub schema: u32,
 }
 
 impl Default for VpnSettings {
     fn default() -> Self {
         Self {
-            mode: "system-proxy".into(),
+            mode: "tun".into(),
             socks_port: 10808,
             http_port: 10809,
             mux_enabled: false,
@@ -94,6 +96,7 @@ impl Default for VpnSettings {
             update_on_open: false,
             routing_enabled: true,
             select_strategy: "manual".into(),
+            schema: 1,
         }
     }
 }
@@ -109,10 +112,41 @@ pub struct VpnState {
 
 pub fn load() -> VpnState {
     let path = paths::vpn_state_file();
-    match std::fs::read_to_string(&path) {
+    let mut state = match std::fs::read_to_string(&path) {
         Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
         Err(_) => VpnState::default(),
+    };
+    if state.settings.schema < 1 {
+        state.settings.mode = "tun".into();
+        state.settings.schema = 1;
+        let _ = save(&state);
     }
+    let mut dirty = false;
+    for n in &mut state.manual_nodes {
+        let fixed = super::parse::clean_display_name(&n.name);
+        if fixed != n.name {
+            n.name = fixed;
+            dirty = true;
+        }
+    }
+    for sub in &mut state.subscriptions {
+        let fixed = super::parse::clean_display_name(&sub.name);
+        if fixed != sub.name {
+            sub.name = fixed;
+            dirty = true;
+        }
+        for n in &mut sub.nodes {
+            let fixed = super::parse::clean_display_name(&n.name);
+            if fixed != n.name {
+                n.name = fixed;
+                dirty = true;
+            }
+        }
+    }
+    if dirty {
+        let _ = save(&state);
+    }
+    state
 }
 
 pub fn save(state: &VpnState) -> Result<(), String> {

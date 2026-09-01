@@ -82,7 +82,7 @@ pub struct ComponentsState {
 
 fn http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
-        .user_agent("EasyZapret/0.6.0 (https://github.com/laciodanya/easyzapret)")
+        .user_agent("EasyZapret/0.6.1 (https://github.com/laciodanya/easyzapret)")
         .build()
         .map_err(|e| e.to_string())
 }

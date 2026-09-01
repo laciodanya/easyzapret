@@ -6,6 +6,8 @@ import { errText } from "../lib/errors";
 import { toast } from "../lib/toast";
 import { useStore, type VpnTab } from "../lib/store";
 import { waitForStatus } from "../lib/status";
+import { countryFromAddress, countryFromName, displayServerName } from "../lib/serverMeta";
+import { FlagMark } from "../components/FlagMark";
 import type { VpnDetails, VpnNode, VpnSettings, VpnSubscription } from "../lib/types";
 import {
   Badge,
@@ -47,6 +49,21 @@ function allNodes(details: VpnDetails | null): VpnNode[] {
   const out = [...details.state.manualNodes];
   for (const s of details.state.subscriptions) out.push(...s.nodes);
   return out;
+}
+
+function paramStr(node: VpnNode, key: string): string | null {
+  if (!node.params || typeof node.params !== "object") return null;
+  const v = (node.params as Record<string, unknown>)[key];
+  return typeof v === "string" && v ? v : null;
+}
+
+function transportLabel(node: VpnNode): string | null {
+  const type = (paramStr(node, "type") || paramStr(node, "net") || "tcp").toLowerCase();
+  const security = (paramStr(node, "security") || "").toLowerCase();
+  const bits = [type === "tcp" ? null : type.toUpperCase(), security && security !== "none" ? security.toUpperCase() : null].filter(
+    Boolean,
+  );
+  return bits.length ? bits.join(" + ") : null;
 }
 
 export function VpnPage() {
@@ -283,7 +300,7 @@ export function VpnPage() {
                   </Badge>
                 </div>
                 <p className="mt-1 truncate text-sm text-[rgb(var(--text-secondary))]">
-                  {vpn?.selectedNodeName || details?.status.selectedNodeName || t("vpn.noServer")}
+                  {displayServerName(vpn?.selectedNodeName || details?.status.selectedNodeName || "") || t("vpn.noServer")}
                 </p>
                 <p className="mt-1 text-xs text-[rgb(var(--muted))]">
                   {t("vpn.proxyPorts", {
@@ -325,26 +342,31 @@ export function VpnPage() {
               <ul className="divide-y divide-[rgb(var(--border)/0.45)]">
                 {nodes.map((n) => {
                   const active = selectedId === n.id;
+                  const cc = countryFromName(n.name) || countryFromAddress(n.address);
+                  const title = displayServerName(n.name) || n.address;
+                  const transport = transportLabel(n);
                   return (
                     <li key={n.id} className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => void selectAndMaybeReconnect(n.id)}
                         className={cn(
-                          "flex min-w-0 flex-1 items-center gap-3 px-1 py-3 text-left transition-colors",
-                          active ? "bg-accent-soft/60" : "hover:bg-[rgb(var(--accent)/0.06)]",
+                          "flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-2.5 text-left transition-colors",
+                          active ? "bg-accent-soft/70 ring-1 ring-[rgb(var(--accent)/0.28)]" : "hover:bg-[rgb(var(--accent)/0.06)]",
                         )}
                       >
-                        <span
-                          className={cn(
-                            "h-2.5 w-2.5 shrink-0 rounded-full",
-                            connected && active ? "bg-emerald-500" : active ? "bg-accent" : "bg-slate-300 dark:bg-slate-600",
-                          )}
-                        />
+                        {cc ? (
+                          <FlagMark code={cc} />
+                        ) : (
+                          <span className="flex h-5 w-7 shrink-0 items-center justify-center rounded-[4px] bg-[rgb(var(--accent)/0.18)] text-[9px] font-bold text-accent">
+                            {n.protocol.slice(0, 2).toUpperCase()}
+                          </span>
+                        )}
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-semibold text-[rgb(var(--text))]">{n.name}</div>
+                          <div className="truncate text-sm font-semibold text-[rgb(var(--text))]">{title}</div>
                           <div className="truncate text-xs text-[rgb(var(--text-secondary))]">
-                            {n.protocol.toUpperCase()} · {n.address}:{n.port}
+                            {n.protocol.toUpperCase()}
+                            {transport ? ` · ${transport}` : ""} · {n.address}:{n.port}
                           </div>
                         </div>
                         <span className="shrink-0 text-xs tabular-nums text-[rgb(var(--muted))]">
@@ -407,7 +429,7 @@ export function VpnPage() {
               />
             </FieldRow>
             {settingsDraft.mode === "tun" && (
-              <Note tone="warn">{t("vpn.settings.tunSoon")}</Note>
+              <Note tone="warn">{t("vpn.settings.tunNote")}</Note>
             )}
             <FieldRow title={t("vpn.settings.httpPort")}>
               <input

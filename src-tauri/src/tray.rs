@@ -5,6 +5,52 @@ use tauri::{AppHandle, Manager, Runtime};
 
 use crate::AppState;
 
+const TRAY_LOGO_PNG: &[u8] = include_bytes!("../icons/32x32.png");
+
+fn tray_logo() -> Image<'static> {
+    Image::from_bytes(TRAY_LOGO_PNG).unwrap_or_else(|_| make_fallback_logo())
+}
+
+/// Squircle + bolt if the PNG asset cannot be decoded.
+fn make_fallback_logo() -> Image<'static> {
+    const SIZE: usize = 32;
+    let mut rgba = vec![0u8; SIZE * SIZE * 4];
+    let s = SIZE as f32;
+    let radius = s * 0.28;
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let px = x as f32 + 0.5;
+            let py = y as f32 + 0.5;
+            let t = py / s;
+            let rcol = (167.0 + (91.0 - 167.0) * t) as u8;
+            let gcol = (139.0 + (63.0 - 139.0) * t) as u8;
+            let bcol = (250.0 + (212.0 - 250.0) * t) as u8;
+            let alpha = rounded_rect_alpha(px, py, 2.0, 2.0, s - 2.0, s - 2.0, radius);
+            let idx = (y * SIZE + x) * 4;
+            rgba[idx] = rcol;
+            rgba[idx + 1] = gcol;
+            rgba[idx + 2] = bcol;
+            rgba[idx + 3] = alpha;
+        }
+    }
+    Image::new_owned(rgba, SIZE as u32, SIZE as u32)
+}
+
+fn rounded_rect_alpha(px: f32, py: f32, x0: f32, y0: f32, x1: f32, y1: f32, r: f32) -> u8 {
+    let cx = px.clamp(x0 + r, x1 - r);
+    let cy = py.clamp(y0 + r, y1 - r);
+    let dx = px - cx;
+    let dy = py - cy;
+    let d = (dx * dx + dy * dy).sqrt() - r;
+    if d <= -1.0 {
+        255
+    } else if d >= 1.0 {
+        0
+    } else {
+        ((1.0 - d) * 0.5 * 255.0) as u8
+    }
+}
+
 pub struct TrayHandles {
     pub tray: TrayIcon,
     pub zapret_item: MenuItem<tauri::Wry>,
@@ -49,37 +95,6 @@ fn labels(lang: &str) -> TrayLabels {
     }
 }
 
-/// Renders a simple round status dot as the tray icon, so the icon can
-/// reflect state without shipping binary image assets.
-/// gray = all off, teal = something is on, red = error.
-fn make_icon(color: (u8, u8, u8)) -> Image<'static> {
-    const SIZE: usize = 32;
-    let mut rgba = vec![0u8; SIZE * SIZE * 4];
-    let center = (SIZE as f32 - 1.0) / 2.0;
-    let radius = SIZE as f32 * 0.42;
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            let dx = x as f32 - center;
-            let dy = y as f32 - center;
-            let dist = (dx * dx + dy * dy).sqrt();
-            let alpha = if dist <= radius - 1.0 {
-                255.0
-            } else if dist <= radius + 1.0 {
-                // soft edge
-                (1.0 - (dist - (radius - 1.0)) / 2.0) * 255.0
-            } else {
-                0.0
-            };
-            let idx = (y * SIZE + x) * 4;
-            rgba[idx] = color.0;
-            rgba[idx + 1] = color.1;
-            rgba[idx + 2] = color.2;
-            rgba[idx + 3] = alpha.clamp(0.0, 255.0) as u8;
-        }
-    }
-    Image::new_owned(rgba, SIZE as u32, SIZE as u32)
-}
-
 fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -106,7 +121,7 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     )?;
 
     let tray = TrayIconBuilder::with_id("main-tray")
-        .icon(make_icon((120, 128, 140)))
+        .icon(tray_logo())
         .tooltip("EasyZapret")
         .menu(&menu)
         .show_menu_on_left_click(false)
@@ -186,12 +201,7 @@ pub fn update_tray_now(app: &AppHandle) {
     let state = app.state::<AppState>();
     let guard = state.tray.lock().unwrap();
     if let Some(handles) = guard.as_ref() {
-        let color = if zapret_on || tg_on || warp_on {
-            (20, 184, 166) // teal — active
-        } else {
-            (120, 128, 140) // gray — idle
-        };
-        let _ = handles.tray.set_icon(Some(make_icon(color)));
+        let _ = handles.tray.set_icon(Some(tray_logo()));
 
         let on = |v: bool| if v { "ON" } else { "OFF" };
         let tooltip = format!(

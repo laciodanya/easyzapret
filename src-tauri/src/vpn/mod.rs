@@ -261,19 +261,46 @@ pub fn connect_with_state(app: &AppState, node_id: Option<String>) -> Result<(),
         .cloned()
         .ok_or_else(|| "vpn_node_not_found".to_string())?;
 
-    if vpn.settings.mode == "tun" {
-        return Err("vpn_tun_unavailable".into());
+    sysproxy::disable_system_proxy();
+
+    let mut used_mode = vpn.settings.mode.clone();
+    let mut settings = vpn.settings.clone();
+    if used_mode != "system-proxy" {
+        used_mode = "tun".into();
+        settings.mode = "tun".into();
     }
 
-    let cfg = config::build_config(&node, &vpn.settings)?;
-    let cfg_text = serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())?;
-    core::start(&cfg_text)?;
+    let start_with = |mode: &str| -> Result<(), String> {
+        let mut s = settings.clone();
+        s.mode = mode.to_string();
+        let cfg = config::build_config(&node, &s)?;
+        let cfg_text = serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())?;
+        core::start(&cfg_text)
+    };
+
+    if used_mode == "tun" {
+        let tun_err = if !core::wintun_available() {
+            Some("wintun.dll missing".to_string())
+        } else {
+            start_with("tun").err()
+        };
+        if let Some(e) = tun_err {
+            logs::append("vpn", &format!("TUN start failed ({e}) — falling back to system proxy"));
+            start_with("system-proxy")?;
+            used_mode = "system-proxy".into();
+        }
+    } else {
+        start_with("system-proxy")?;
+    }
+
+    // Browsers ignore TUN unless WinINET is also pointed at local Xray.
     sysproxy::enable_system_proxy(vpn.settings.http_port, vpn.settings.socks_port)?;
 
     vpn.selected_node_id = Some(id);
+    vpn.settings.mode = used_mode.clone();
     store::save(&vpn)?;
     app.vpn_active.store(true, std::sync::atomic::Ordering::SeqCst);
-    logs::append("vpn", &format!("Connected → {}", node.name));
+    logs::append("vpn", &format!("Connected ({used_mode}) → {}", node.name));
     Ok(())
 }
 
@@ -325,15 +352,16 @@ pub fn enforce_warp_exclusivity() {
 
 async fn fetch_subscription(url: &str) -> Result<VpnSubscription, String> {
     let client = reqwest::Client::builder()
-        .user_agent("EasyZapret/0.6.0")
-        .timeout(Duration::from_secs(20))
-        .redirect(reqwest::redirect::Policy::limited(5))
+        .user_agent("Happ/3.4.0 EasyZapret/0.6.1")
+        .timeout(Duration::from_secs(25))
+        .redirect(reqwest::redirect::Policy::limited(8))
         .build()
         .map_err(|e| e.to_string())?;
 
     let resp = client
         .get(url)
         .header("Accept", "text/plain, application/json, */*")
+        .header("User-Agent", "Happ/3.4.0")
         .send()
         .await
         .map_err(|e| format!("network error: {e}"))?;

@@ -366,7 +366,8 @@ export default {
     installCore: "Install Xray-core",
     coreInstalled: "Xray-core installed",
     warpExclusive: "Cloudflare WARP is on. Turn it off to use VPN.",
-    zapretCompatible: "VPN can run alongside Zapret. Not with WARP — only one tunnel at a time.",
+    zapretCompatible:
+      "VPN creates a TUN tunnel that can run alongside Zapret. Not with WARP — only one tunnel at a time.",
     connected: "Connected",
     disconnected: "Disconnected",
     noServer: "No server selected",
@@ -391,10 +392,11 @@ export default {
     settings: {
       general: "General",
       mode: "Mode",
-      modeDesc: "System proxy covers most apps. TUN will arrive later.",
+      modeDesc: "TUN changes the IP for all traffic. System proxy is a fallback for browsers.",
       modeProxy: "System proxy",
       modeTun: "TUN",
-      tunSoon: "TUN is not available in this build — coming with sing-box.",
+      tunNote:
+        "TUN sends all traffic through Xray and changes your IP. Administrator rights are required. If the tunnel fails to start, EasyZapret falls back to the system proxy.",
       httpPort: "HTTP port",
       socksPort: "SOCKS port",
       dns: "DNS",

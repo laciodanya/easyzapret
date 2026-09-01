@@ -20,7 +20,7 @@
   nsExec::Exec 'schtasks /Delete /TN "EasyZapret" /F'
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "EasyZapret"
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "EasyZapret"
-  nsExec::Exec 'taskkill /IM winws.exe /F'
+  nsExec::Exec 'taskkill /IM xray.exe /F'
   nsExec::Exec 'taskkill /IM TgWsProxy_windows.exe /F'
   nsExec::Exec 'net stop zapret'
   nsExec::Exec 'sc delete zapret'

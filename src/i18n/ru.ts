@@ -367,7 +367,8 @@ export default {
     installCore: "Установить Xray-core",
     coreInstalled: "Xray-core установлен",
     warpExclusive: "Сейчас включён Cloudflare WARP. Отключите его, чтобы пользоваться VPN.",
-    zapretCompatible: "VPN можно включать вместе с Zapret. С WARP — нельзя: только один туннель за раз.",
+    zapretCompatible:
+      "VPN поднимает системный туннель (TUN) и может работать вместе с Zapret. С WARP — нельзя: только один туннель за раз.",
     connected: "Подключено",
     disconnected: "Отключено",
     noServer: "Сервер не выбран",
@@ -392,10 +393,11 @@ export default {
     settings: {
       general: "Основные",
       mode: "Режим",
-      modeDesc: "Системный прокси покрывает большинство приложений. TUN появится позже.",
+      modeDesc: "TUN меняет IP всего трафика. Системный прокси — запасной режим для браузеров.",
       modeProxy: "Системный прокси",
       modeTun: "TUN",
-      tunSoon: "TUN пока недоступен в этой версии — будет добавлен с sing-box.",
+      tunNote:
+        "TUN направляет весь трафик в Xray и меняет IP. Нужны права администратора. Если туннель не поднимется, EasyZapret сам переключится на системный прокси.",
       httpPort: "HTTP-порт",
       socksPort: "SOCKS-порт",
       dns: "DNS",

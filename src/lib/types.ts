@@ -173,6 +173,7 @@ export interface VpnSettings {
   updateOnOpen: boolean;
   routingEnabled: boolean;
   selectStrategy: string;
+  schema?: number;
 }
 
 export interface VpnState {

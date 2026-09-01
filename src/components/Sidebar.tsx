@@ -58,7 +58,7 @@ export function Sidebar() {
         {expanded && (
           <div className="min-w-0">
             <div className="truncate text-sm font-bold tracking-tight text-[rgb(var(--text))]">EasyZapret</div>
-            <div className="truncate text-[10px] text-[rgb(var(--text-secondary))]">v{appInfo?.version ?? "0.6.0"}</div>
+            <div className="truncate text-[10px] text-[rgb(var(--text-secondary))]">v{appInfo?.version ?? "0.6.1"}</div>
           </div>
         )}
       </div>

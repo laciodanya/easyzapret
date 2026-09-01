@@ -306,7 +306,7 @@ export function SettingsPage() {
         </Note>
         <div className="md:col-span-2">
           <Note tone={appUpdate?.updateAvailable ? "warn" : "info"} title={t("settings.about")}>
-            {t("settings.aboutText", { version: appInfo?.version ?? "0.6.0" })}{" "}
+            {t("settings.aboutText", { version: appInfo?.version ?? "0.6.1" })}{" "}
             <button
               className="underline"
               onClick={() => openUrl("https://github.com/Flowseal/zapret-discord-youtube").catch(() => {})}

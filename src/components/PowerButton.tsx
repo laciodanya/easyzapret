@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Icon, type IconName } from "./icons";
 import { Spinner, cn } from "./ui";
 
@@ -27,6 +28,15 @@ export function PowerButton({
   onClick: () => void;
 }) {
   const dims = SIZES[size];
+
+  // A single ring expands from the button when it switches on.
+  const [ripple, setRipple] = useState(0);
+  const wasOn = useRef(on);
+  useEffect(() => {
+    if (on && !wasOn.current) setRipple((n) => n + 1);
+    wasOn.current = on;
+  }, [on]);
+
   return (
     <button
       type="button"
@@ -35,8 +45,8 @@ export function PowerButton({
       disabled={disabled || busy}
       onClick={onClick}
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full transition-[background-color,color,transform,box-shadow] duration-200",
-        "enabled:hover:scale-[1.03] enabled:active:scale-95 disabled:cursor-not-allowed",
+        "relative flex shrink-0 items-center justify-center rounded-full transition-[background-color,color,transform,box-shadow] duration-500",
+        "enabled:hover:scale-[1.04] enabled:active:scale-95 enabled:active:duration-100 disabled:cursor-not-allowed",
         dims.box,
         on
           ? "bg-accent text-accent-fg shadow-[0_0_0_6px_var(--accent-soft)]"
@@ -44,14 +54,23 @@ export function PowerButton({
         disabled && !busy && "opacity-45",
       )}
     >
-      {busy ? (
-        <Spinner
-          size={dims.spinner}
-          className={on ? "border-accent-fg/30 border-t-accent-fg" : undefined}
+      {ripple > 0 && (
+        <span
+          key={ripple}
+          aria-hidden
+          className="ez-ripple pointer-events-none absolute inset-0 rounded-full bg-accent"
         />
-      ) : (
-        <Icon name={icon} size={dims.icon} />
       )}
+      <span key={busy ? "busy" : "idle"} className="ez-fade relative flex">
+        {busy ? (
+          <Spinner
+            size={dims.spinner}
+            className={on ? "border-accent-fg/30 border-t-accent-fg" : undefined}
+          />
+        ) : (
+          <Icon name={icon} size={dims.icon} />
+        )}
+      </span>
     </button>
   );
 }

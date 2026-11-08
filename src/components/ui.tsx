@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { copyText } from "../lib/clipboard";
+import { usePresence } from "../lib/presence";
 import { toast } from "../lib/toast";
+import { useSlider } from "../lib/useSlider";
 import { Icon, type IconName } from "./icons";
 
 export function cn(...classes: (string | false | null | undefined)[]) {
@@ -180,13 +182,13 @@ export function Switch({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        "relative inline-flex h-[22px] w-10 shrink-0 items-center rounded-full transition-colors disabled:pointer-events-none disabled:opacity-45",
+        "relative inline-flex h-[22px] w-10 shrink-0 items-center rounded-full transition-colors duration-300 disabled:pointer-events-none disabled:opacity-45",
         checked ? "bg-accent" : "bg-line-strong",
       )}
     >
       <span
         className={cn(
-          "absolute left-[3px] h-4 w-4 rounded-full bg-white transition-transform duration-150",
+          "absolute left-[3px] h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-300",
           checked ? "translate-x-[18px]" : "translate-x-0",
         )}
       />
@@ -276,11 +278,26 @@ export function Segmented<T extends string>({
   disabled?: boolean;
   size?: "md" | "sm";
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const activeIndex = options.findIndex((o) => o.value === value);
+  const { box, animate } = useSlider(ref, "[role=radio]", activeIndex, [options.length, size]);
+
   return (
     <div
+      ref={ref}
       role="radiogroup"
-      className="inline-flex rounded-control border border-line bg-sunken p-0.5"
+      className="relative inline-flex rounded-control border border-line bg-sunken p-0.5"
     >
+      {box && activeIndex >= 0 && (
+        <span
+          aria-hidden
+          className={cn(
+            "absolute bottom-0.5 top-0.5 rounded-[6px] bg-lift shadow-[0_1px_2px_rgb(0_0_0/0.12)]",
+            animate ? "transition-[left,width] duration-300 ease-[var(--ease)]" : "transition-none",
+          )}
+          style={{ left: box.left, width: box.width }}
+        />
+      )}
       {options.map((opt) => (
         <button
           key={opt.value}
@@ -290,11 +307,9 @@ export function Segmented<T extends string>({
           disabled={disabled}
           onClick={() => onChange(opt.value)}
           className={cn(
-            "rounded-[6px] font-medium transition-colors disabled:pointer-events-none disabled:opacity-45",
+            "relative rounded-[6px] font-medium transition-colors disabled:pointer-events-none disabled:opacity-45",
             size === "sm" ? "h-7 px-2.5 text-[13px]" : "h-8 px-3 text-[13px]",
-            value === opt.value
-              ? "bg-lift text-fg shadow-[0_1px_2px_rgb(0_0_0/0.12)]"
-              : "text-muted hover:text-fg",
+            value === opt.value ? "text-fg" : "text-muted hover:text-fg",
           )}
         >
           {opt.label}
@@ -315,8 +330,22 @@ export function Tabs<T extends string>({
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const activeIndex = options.findIndex((o) => o.value === value);
+  const { box, animate } = useSlider(ref, "[role=tab]", activeIndex, [options.length]);
+
   return (
-    <div role="tablist" className="mb-6 flex gap-1 border-b border-line">
+    <div ref={ref} role="tablist" className="relative mb-6 flex gap-1 border-b border-line">
+      {box && (
+        <span
+          aria-hidden
+          className={cn(
+            "absolute -bottom-px h-0.5 rounded-full bg-accent",
+            animate ? "transition-[left,width] duration-300 ease-[var(--ease)]" : "transition-none",
+          )}
+          style={{ left: box.left, width: box.width }}
+        />
+      )}
       {options.map((opt) => (
         <button
           key={opt.value}
@@ -325,10 +354,8 @@ export function Tabs<T extends string>({
           aria-selected={value === opt.value}
           onClick={() => onChange(opt.value)}
           className={cn(
-            "-mb-px h-10 border-b-2 px-3 text-sm font-medium transition-colors",
-            value === opt.value
-              ? "border-accent text-fg"
-              : "border-transparent text-muted hover:text-fg",
+            "h-10 px-3 text-sm font-medium transition-colors",
+            value === opt.value ? "text-fg" : "text-muted hover:text-fg",
           )}
         >
           {opt.label}
@@ -464,19 +491,31 @@ export function Modal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  if (!open) return null;
+  const { mounted, state } = usePresence(open, 160);
+  if (!mounted) return null;
 
   const width = { sm: "max-w-sm", md: "max-w-md", lg: "max-w-2xl" }[size];
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6" role="presentation">
-      <div className="ez-fade absolute inset-0 bg-[var(--scrim)]" onClick={onClose} />
+    <div
+      className={cn(
+        "fixed inset-0 z-50 flex items-center justify-center p-6",
+        state === "closed" && "pointer-events-none",
+      )}
+      role="presentation"
+    >
+      <div
+        data-state={state}
+        className="ez-scrim absolute inset-0 bg-[var(--scrim)]"
+        onClick={onClose}
+      />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        data-state={state}
         className={cn(
-          "ez-pop relative flex max-h-[calc(100vh-48px)] w-full flex-col rounded-modal bg-panel shadow-[var(--shadow-modal)]",
+          "ez-modal relative flex max-h-[calc(100vh-48px)] w-full flex-col rounded-modal bg-panel shadow-[var(--shadow-modal)]",
           width,
         )}
       >

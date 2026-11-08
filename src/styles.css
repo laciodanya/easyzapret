@@ -1,6 +1,12 @@
 @import "tailwindcss";
-@import "@fontsource-variable/onest";
-@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource/ibm-plex-sans/cyrillic-400.css";
+@import "@fontsource/ibm-plex-sans/cyrillic-500.css";
+@import "@fontsource/ibm-plex-sans/cyrillic-600.css";
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-500.css";
+@import "@fontsource/ibm-plex-sans/latin-600.css";
+@import "@fontsource/ibm-plex-mono/cyrillic-400.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -72,8 +78,11 @@
 }
 
 @theme inline {
-  --font-sans: "Onest Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono Variable", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --font-sans: "IBM Plex Sans", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --default-transition-duration: 200ms;
+  --default-transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 
   --color-app: var(--app);
   --color-panel: var(--panel);
@@ -114,7 +123,7 @@ body {
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.45;
-  font-feature-settings: "tnum" 1, "cv11" 1;
+  font-feature-settings: "tnum" 1;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
   user-select: none;
@@ -181,41 +190,82 @@ select:focus-visible {
   border: 3px solid transparent;
 }
 
-/* Motion: only where it explains a state change. */
-@keyframes ez-pop {
+/*
+ * Motion: it explains a state change, nothing else.
+ * One easing curve for everything: fast start, long soft landing.
+ */
+:root {
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes ez-pop-in {
   from {
     opacity: 0;
-    transform: translateY(6px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: none;
+    transform: translateY(10px) scale(0.97);
   }
 }
 
-@keyframes ez-fade {
+@keyframes ez-pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+@keyframes ez-fade-in {
   from {
     opacity: 0;
   }
+}
+
+@keyframes ez-fade-out {
   to {
-    opacity: 1;
+    opacity: 0;
+  }
+}
+
+@keyframes ez-page {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes ez-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+  }
+}
+
+@keyframes ez-drop-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+}
+
+@keyframes ez-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@keyframes ez-ripple {
+  from {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.35);
   }
 }
 
 @keyframes ez-spin {
   to {
     transform: rotate(360deg);
-  }
-}
-
-@keyframes ez-toast {
-  from {
-    opacity: 0;
-    transform: translateX(12px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
   }
 }
 
@@ -228,16 +278,41 @@ select:focus-visible {
   }
 }
 
-.ez-pop {
-  animation: ez-pop 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+.ez-page {
+  animation: ez-page 320ms var(--ease);
+}
+
+.ez-modal[data-state="open"] {
+  animation: ez-pop-in 280ms var(--ease);
+}
+.ez-modal[data-state="closed"] {
+  animation: ez-pop-out 160ms ease-in forwards;
+}
+
+.ez-scrim[data-state="open"] {
+  animation: ez-fade-in 240ms ease-out;
+}
+.ez-scrim[data-state="closed"] {
+  animation: ez-fade-out 160ms ease-in forwards;
+}
+
+.ez-drop[data-state="open"] {
+  animation: ez-drop 240ms var(--ease);
+}
+.ez-drop[data-state="closed"] {
+  animation: ez-drop-out 140ms ease-in forwards;
 }
 
 .ez-fade {
-  animation: ez-fade 120ms ease-out;
+  animation: ez-fade-in 220ms ease-out;
 }
 
 .ez-toast {
-  animation: ez-toast 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: ez-toast-in 320ms var(--ease);
+}
+
+.ez-ripple {
+  animation: ez-ripple 650ms var(--ease) forwards;
 }
 
 .ez-spin {

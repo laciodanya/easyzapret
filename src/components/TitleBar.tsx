@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Icon } from "./icons";
 import { Logo } from "./Logo";
+import { UpdateButton } from "./UpdateButton";
 import { cn } from "./ui";
 
 function WinBtn({
@@ -67,6 +68,8 @@ export function TitleBar() {
       </div>
 
       <div className="flex h-full items-stretch">
+        <UpdateButton />
+        <span aria-hidden className="my-2.5 mx-1 w-px bg-line" />
         <WinBtn
           label={t("window.minimize")}
           onClick={() => void getCurrentWindow().minimize().catch(() => {})}

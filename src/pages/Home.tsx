@@ -74,12 +74,10 @@ function Tile({
   onClick: () => void;
   extra?: ReactNode;
 }) {
-  const { t } = useTranslation();
   return (
     <div className="flex w-28 flex-col items-center gap-2 text-center">
       <PowerButton size="md" icon={icon} on={on} busy={busy} disabled={disabled} label={label} onClick={onClick} />
       <div className="text-[13px] font-medium">{label}</div>
-      <div className={on ? "text-xs text-ok" : "text-xs text-muted"}>{on ? t("home.tileOn") : t("home.tileOff")}</div>
       {extra}
     </div>
   );
@@ -91,11 +89,6 @@ export function HomePage() {
     status,
     settings,
     components,
-    updates,
-    appUpdate,
-    updatesCheckedAt,
-    updatesError,
-    checkUpdates,
     setPage,
     updateSettings,
     serviceHealth,
@@ -108,7 +101,6 @@ export function HomePage() {
   const [tgAction, setTgAction] = useState<ToggleAction>(null);
   const [warpAction, setWarpAction] = useState<ToggleAction>(null);
   const [error, setError] = useState<string | null>(null);
-  const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const zapret = status?.zapret;
@@ -218,33 +210,6 @@ export function HomePage() {
     }
   }
 
-  async function onCheckUpdates() {
-    setCheckingUpdates(true);
-    try {
-      await checkUpdates();
-    } finally {
-      setCheckingUpdates(false);
-    }
-  }
-
-  const updatesAvailable = !!(updates?.some((u) => u.updateAvailable) || appUpdate?.updateAvailable);
-  const updatesLabel = !updatesCheckedAt
-    ? t("home.updatesUnknown")
-    : updatesError
-      ? t("home.updatesError")
-      : updatesAvailable
-        ? t("home.updatesAvailable")
-        : t("home.updatesNone");
-
-  const title =
-    zapretAction === "starting"
-      ? t("home.statusStarting")
-      : zapretAction === "stopping"
-        ? t("home.statusStopping")
-        : zapretOn
-          ? t("home.statusOn")
-          : t("home.statusOff");
-
   return (
     <div className="space-y-7">
       <section className="flex flex-col items-center gap-4 text-center">
@@ -256,7 +221,7 @@ export function HomePage() {
           onClick={() => void toggleZapret(!zapretOn)}
         />
         <div className="min-h-9">
-          <h1 className="text-2xl font-semibold leading-tight">{title}</h1>
+          <h1 className="text-2xl font-semibold leading-tight">Zapret</h1>
           <p className={error ? "mt-1.5 max-w-md text-sm text-fail" : "mt-1.5 text-sm text-muted"}>
             {error ?? (viaService ? t("home.viaService", { name: strategyName }) : null)}
           </p>
@@ -337,24 +302,6 @@ export function HomePage() {
           <ServiceRow key={id} id={id} health={serviceHealth[id]} />
         ))}
       </Panel>
-
-      <div className="flex items-center justify-between gap-4 px-1 text-[13px]">
-        <span className={updatesAvailable ? "font-medium text-warn" : "text-muted"}>
-          {t("home.lastUpdateCheck", { result: updatesLabel })}
-          {updatesCheckedAt && (
-            <span className="ml-1.5 text-faint">{formatClock(updatesCheckedAt)}</span>
-          )}
-        </span>
-        <Button
-          size="sm"
-          variant={updatesAvailable ? "primary" : "ghost"}
-          disabled={checkingUpdates}
-          onClick={() => void onCheckUpdates()}
-        >
-          {checkingUpdates && <Spinner size={14} />}
-          {updatesAvailable ? t("common.update") : t("home.checkNow")}
-        </Button>
-      </div>
 
       <StrategyPickerModal open={pickerOpen} onClose={() => setPickerOpen(false)} />
     </div>

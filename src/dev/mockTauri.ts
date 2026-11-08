@@ -228,7 +228,17 @@ const handlers: Record<string, Handler> = {
     { component: "zapret", installed: "1.9.7", latest: "1.9.7", updateAvailable: false, releaseUrl: null, error: null },
     { component: "tgproxy", installed: "1.4.2", latest: "1.4.2", updateAvailable: false, releaseUrl: null, error: null },
   ],
-  check_app_update: () => ({ current: "0.6.0", latest: "0.6.0", updateAvailable: false, releaseUrl: null, error: null }),
+  check_app_update: () => {
+    // Open the preview with ?update to see the "update available" state.
+    const available = new URLSearchParams(window.location.search).has("update");
+    return {
+      current: "0.6.0",
+      latest: available ? "0.6.1" : "0.6.0",
+      updateAvailable: available,
+      releaseUrl: null,
+      error: null,
+    };
+  },
   get_autostart_state: () => ({ launchAtLogin: true, loginEntryPresent: true }),
   read_user_lists: () => ({
     files: [

@@ -55,7 +55,7 @@ export default function App() {
       () => {
         const { settings, checkUpdates } = useStore.getState();
         if (settings?.checkUpdatesOnStart) {
-          checkUpdates({ silent: true }).catch(() => {});
+          checkUpdates().catch(() => {});
         }
       },
       60 * 60 * 1000,
@@ -97,7 +97,7 @@ export default function App() {
             </div>
           )}
           <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-[900px] px-8 pb-12 pt-8">
+            <div key={page} className="ez-page mx-auto w-full max-w-[900px] px-8 pb-12 pt-8">
               {page === "home" && <HomePage />}
               {page === "autopilot" && <AutopilotPage />}
               {page === "zapret" && <ZapretPage />}

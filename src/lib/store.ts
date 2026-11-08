@@ -62,8 +62,9 @@ interface AppStore {
   refreshStrategies: () => Promise<void>;
   updateSettings: (patch: Partial<Settings>) => Promise<void>;
   updateAutostart: (patch: Partial<AutostartSettings>) => Promise<void>;
-  checkUpdates: (opts?: { silent?: boolean }) => Promise<void>;
+  checkUpdates: () => Promise<void>;
   dismissSetup: () => void;
+  openUpdatesModal: () => void;
   dismissUpdatesModal: () => void;
   dismissWhatsNew: () => Promise<void>;
   checkServices: () => Promise<boolean>;
@@ -191,7 +192,7 @@ export const useStore = create<AppStore>((set, get) => ({
       void get().refreshStrategies();
       if (settings.checkUpdatesOnStart) {
         // Wait for WhatsNew/setup first; then open the updates modal if needed.
-        window.setTimeout(() => get().checkUpdates({ silent: false }).catch(() => {}), 4500);
+        window.setTimeout(() => get().checkUpdates().catch(() => {}), 4500);
       }
     } catch {
       set({ ready: true, initError: true });
@@ -258,49 +259,34 @@ export const useStore = create<AppStore>((set, get) => ({
     }
   },
 
-  checkUpdates: async (opts) => {
-    const silent = opts?.silent ?? false;
+  checkUpdates: async () => {
     try {
       const [updates, appUpdate] = await Promise.all([
         api.checkUpdates(),
         api.checkAppUpdate().catch(() => null),
       ]);
       const hasErrors = updates.every((u) => u.error) && (!appUpdate || !!appUpdate.error);
-      const anyAvailable =
-        updates.some((u) => u.updateAvailable) || !!appUpdate?.updateAvailable;
-      const { showWhatsNew, showSetup } = get();
-      const canShowModal = anyAvailable && !showWhatsNew && !showSetup;
       set({
         updates,
         appUpdate,
         updatesCheckedAt: new Date(),
         updatesError: hasErrors,
-        ...(silent ? {} : { showUpdatesModal: canShowModal }),
       });
     } catch {
       set({ updatesCheckedAt: new Date(), updatesError: true });
     }
   },
 
-  dismissSetup: () => {
-    const { updates, appUpdate, showWhatsNew } = get();
-    const anyAvailable =
-      !!updates?.some((u) => u.updateAvailable) || !!appUpdate?.updateAvailable;
-    set({
-      showSetup: false,
-      ...(anyAvailable && !showWhatsNew ? { showUpdatesModal: true } : {}),
-    });
-  },
+  dismissSetup: () => set({ showSetup: false }),
+  openUpdatesModal: () => set({ showUpdatesModal: true }),
   dismissUpdatesModal: () => set({ showUpdatesModal: false }),
 
   dismissWhatsNew: async () => {
-    const { appInfo, updates, appUpdate } = get();
+    const { appInfo } = get();
     if (appInfo) {
       await get().updateSettings({ lastSeenChangelogVersion: appInfo.version });
     }
-    const anyAvailable =
-      !!updates?.some((u) => u.updateAvailable) || !!appUpdate?.updateAvailable;
-    set({ showWhatsNew: false, ...(anyAvailable ? { showUpdatesModal: true } : {}) });
+    set({ showWhatsNew: false });
   },
 
   checkServices: async () => {

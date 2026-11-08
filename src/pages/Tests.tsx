@@ -10,6 +10,7 @@ import {
   Badge,
   Button,
   Chip,
+  Input,
   Note,
   Panel,
   ProgressBar,
@@ -38,10 +39,13 @@ const SELECTABLE_SERVICES: ServiceId[] = ["discord", "youtube", "telegram", "clo
 
 // Module-level so results survive page switches while tests run in the backend.
 let saved: SavedRun = { runs: [], best: null, mode: "service", services: [] };
-let savedPicks: { mode: TestMode; services: ServiceId[]; scope: "current" | "all" } = {
+type Scope = "current" | "selected" | "all";
+
+let savedPicks: { mode: TestMode; services: ServiceId[]; scope: Scope; chosen: string[] } = {
   mode: "service",
   services: ["discord", "youtube"],
   scope: "current",
+  chosen: [],
 };
 
 function counts(results: TestTargetResult[]) {
@@ -86,7 +90,9 @@ export function TestsPage() {
   const { t } = useTranslation();
   const { strategies, settings, status, updateSettings, refreshStatus } = useStore();
   const [mode, setMode] = useState<TestMode>(savedPicks.mode);
-  const [scope, setScope] = useState<"current" | "all">(savedPicks.scope);
+  const [scope, setScope] = useState<Scope>(savedPicks.scope);
+  const [chosen, setChosen] = useState<string[]>(savedPicks.chosen);
+  const [filter, setFilter] = useState("");
   const [picked, setPicked] = useState<ServiceId[]>(savedPicks.services);
   const [runs, setRuns] = useState<ConfigRun[]>(saved.runs);
   const [best, setBest] = useState<string | null>(saved.best);
@@ -100,8 +106,8 @@ export function TestsPage() {
   const unlistenRef = useRef<UnlistenFn | null>(null);
 
   useEffect(() => {
-    savedPicks = { mode, services: picked, scope };
-  }, [mode, picked, scope]);
+    savedPicks = { mode, services: picked, scope, chosen };
+  }, [mode, picked, scope, chosen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -176,11 +182,30 @@ export function TestsPage() {
     setPicked((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
   }
 
+  function toggleChosen(name: string) {
+    setChosen((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
+  }
+
+  function pickConfigs(): string[] {
+    switch (scope) {
+      case "all":
+        return strategies;
+      case "selected":
+        // Keep the order of the strategy list, drop anything that no longer exists.
+        return strategies.filter((name) => chosen.includes(name));
+      case "current":
+        return settings?.selectedStrategy ? [settings.selectedStrategy] : [];
+      default: {
+        const exhaustive: never = scope;
+        return exhaustive;
+      }
+    }
+  }
+
   async function start() {
-    const configs =
-      scope === "all" ? strategies : settings?.selectedStrategy ? [settings.selectedStrategy] : [];
+    const configs = pickConfigs();
     if (configs.length === 0) {
-      toast(t("home.noStrategy"), "fail");
+      toast(t(scope === "selected" ? "tests.pickEmpty" : "home.noStrategy"), "fail");
       return;
     }
     if (mode === "service" && picked.length === 0) {
@@ -251,6 +276,7 @@ export function TestsPage() {
                 disabled={running}
                 options={[
                   { value: "current", label: t("tests.scopeCurrent") },
+                  { value: "selected", label: t("tests.scopeSelected") },
                   { value: "all", label: t("tests.scopeAll", { count: strategies.length }) },
                 ]}
                 onChange={setScope}
@@ -267,6 +293,46 @@ export function TestsPage() {
               </Button>
             )}
           </div>
+
+          {scope === "selected" && (
+            <Field label={t("tests.pickTitle")}>
+              <div className="rounded-control border border-line bg-sunken p-3">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <Input
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    placeholder={t("tests.pickSearch")}
+                    disabled={running}
+                    className="h-8 w-52"
+                  />
+                  <span className="text-[13px] text-muted">
+                    {t("tests.pickedCount", { count: chosen.filter((n) => strategies.includes(n)).length })}
+                  </span>
+                  <span className="flex-1" />
+                  <Button size="sm" variant="ghost" disabled={running} onClick={() => setChosen(strategies)}>
+                    {t("tests.pickAll")}
+                  </Button>
+                  <Button size="sm" variant="ghost" disabled={running} onClick={() => setChosen([])}>
+                    {t("tests.pickNone")}
+                  </Button>
+                </div>
+                <div className="flex max-h-52 flex-wrap gap-2 overflow-y-auto">
+                  {strategies
+                    .filter((name) => name.toLowerCase().includes(filter.trim().toLowerCase()))
+                    .map((name) => (
+                      <Chip
+                        key={name}
+                        active={chosen.includes(name)}
+                        disabled={running}
+                        onClick={() => toggleChosen(name)}
+                      >
+                        {name.replace(/\.bat$/i, "")}
+                      </Chip>
+                    ))}
+                </div>
+              </div>
+            </Field>
+          )}
 
           {progress && (
             <div>

@@ -216,7 +216,7 @@ export default {
       },
       tests: {
         title: "Quick per-service tests",
-        text: "On the Tests tab pick Discord, YouTube or another service and compare strategies for it. The result is a strategy × service table.",
+        text: "On the Tests tab pick Discord, YouTube or another service and compare strategies for it; several strategies can be ticked at once. The result is a strategy × service table.",
       },
       logs: {
         title: "Logs for GitHub",
@@ -355,6 +355,13 @@ export default {
     services: "Services",
     scope: "Strategies",
     scopeCurrent: "Selected",
+    scopeSelected: "Pick several",
+    pickTitle: "Strategies to test",
+    pickSearch: "Search",
+    pickedCount: "Selected: {{count}}",
+    pickAll: "All",
+    pickNone: "Clear",
+    pickEmpty: "Pick at least one strategy",
     scopeAll: "All ({{count}})",
     run: "Run",
     cancel: "Stop",

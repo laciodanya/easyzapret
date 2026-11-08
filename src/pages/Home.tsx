@@ -9,7 +9,7 @@ import type { ServiceHealth } from "../lib/types";
 import { Icon, type IconName } from "../components/icons";
 import { PowerButton } from "../components/PowerButton";
 import { StrategyPickerModal } from "../components/StrategyPickerModal";
-import { Badge, Button, Panel, Spinner, StatusDot, type Tone } from "../components/ui";
+import { IconButton, StatusDot, type Tone } from "../components/ui";
 
 type ToggleAction = "starting" | "stopping" | null;
 
@@ -19,40 +19,15 @@ const SERVICE_TONE: Record<ServiceHealth["state"], Tone> = {
   down: "fail",
 };
 
-function ServiceRow({ id, health }: { id: string; health?: ServiceHealth }) {
+function ServiceItem({ id, health }: { id: string; health?: ServiceHealth }) {
   const { t } = useTranslation();
-
-  const detail = (() => {
-    if (!health) return null;
-    if (health.failed.length > 0) {
-      return t("home.failedTargets", { list: health.failed.slice(0, 3).join(", ") });
-    }
-    if (health.bulkBlocked) return t("home.bulkBlocked");
-    return null;
-  })();
-
   return (
-    <div className="flex items-center gap-4 py-3">
-      <StatusDot tone={health ? SERVICE_TONE[health.state] : "off"} size={9} />
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium">{t(`services.${id}`)}</div>
-        {detail && <div className="mt-0.5 truncate text-xs text-muted">{detail}</div>}
-      </div>
-      {health ? (
-        <>
-          <span className="text-[13px] tabular-nums text-muted">
-            {health.avgMs !== null ? t("common.ms", { value: health.avgMs }) : ""}
-          </span>
-          <span className="w-12 text-right text-[13px] font-medium tabular-nums">
-            {health.ok}/{health.total}
-          </span>
-          <div className="w-28 text-right">
-            <Badge tone={SERVICE_TONE[health.state]}>{t(`home.svc_${health.state}`)}</Badge>
-          </div>
-        </>
-      ) : (
-        <span className="text-[13px] text-faint">{t("home.notChecked")}</span>
-      )}
+    <div className="flex items-center gap-2.5 text-[13px]">
+      <StatusDot tone={health ? SERVICE_TONE[health.state] : "off"} size={7} />
+      <span className={health ? "text-fg" : "text-muted"}>{t(`services.${id}`)}</span>
+      <span className="ml-auto tabular-nums text-faint">
+        {health ? `${health.ok}/${health.total}` : "—"}
+      </span>
     </div>
   );
 }
@@ -210,6 +185,18 @@ export function HomePage() {
     }
   }
 
+  const serviceProblems = HOME_SERVICES.flatMap((id) => {
+    const health = serviceHealth[id];
+    if (!health || health.state === "ok") return [];
+    const detail =
+      health.failed.length > 0
+        ? t("home.failedTargets", { list: health.failed.slice(0, 3).join(", ") })
+        : health.bulkBlocked
+          ? t("home.bulkBlocked")
+          : t(`home.svc_${health.state}`);
+    return [`${t(`services.${id}`)}: ${detail}`];
+  });
+
   return (
     <div className="space-y-7">
       <section className="flex flex-col items-center gap-4 text-center">
@@ -279,29 +266,37 @@ export function HomePage() {
         />
       </section>
 
-      <Panel
-        title={t("home.servicesTitle")}
-        description={
-          serviceCheckedAt
-            ? t("home.checkedAt", { time: formatClock(serviceCheckedAt) })
-            : t("home.servicesDesc")
-        }
-        action={
-          <Button
-            size="sm"
-            icon={serviceChecking ? undefined : "refresh"}
+      <section className="mt-14 border-t border-line pt-5">
+        <div className="mb-3.5 flex items-center justify-between gap-3">
+          <h2 className="text-[13px] font-medium text-muted">
+            {t("home.servicesTitle")}
+            {serviceCheckedAt && (
+              <span className="ml-2 font-normal text-faint">
+                {t("home.checkedAt", { time: formatClock(serviceCheckedAt) })}
+              </span>
+            )}
+          </h2>
+          <IconButton
+            icon="refresh"
+            label={serviceChecking ? t("home.checking") : t("home.check")}
             disabled={serviceChecking}
+            className={serviceChecking ? "[&_svg]:animate-spin" : undefined}
             onClick={() => void checkServices()}
-          >
-            {serviceChecking && <Spinner size={14} />}
-            {serviceChecking ? t("home.checking") : t("home.check")}
-          </Button>
-        }
-      >
-        {HOME_SERVICES.map((id) => (
-          <ServiceRow key={id} id={id} health={serviceHealth[id]} />
-        ))}
-      </Panel>
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-x-8 gap-y-2.5 md:grid-cols-4">
+          {HOME_SERVICES.map((id) => (
+            <ServiceItem key={id} id={id} health={serviceHealth[id]} />
+          ))}
+        </div>
+        {serviceProblems.length > 0 && (
+          <ul className="mt-3.5 space-y-1 text-xs text-muted">
+            {serviceProblems.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <StrategyPickerModal open={pickerOpen} onClose={() => setPickerOpen(false)} />
     </div>

@@ -79,6 +79,11 @@ export default {
     initFailed: "Не удалось загрузить настройки. Перезапустите приложение.",
   },
   home: {
+    tgShort: "Telegram",
+    warpShort: "WARP",
+    tileOn: "Включён",
+    tileOff: "Выключен",
+    strategyLabel: "Стратегия",
     tgTitle: "Telegram Proxy",
     tgDesc: "Локальный прокси для стабильной работы Telegram Desktop",
     warpTitle: "Cloudflare WARP",

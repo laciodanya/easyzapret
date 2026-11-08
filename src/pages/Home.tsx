@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { errText } from "../lib/errors";
@@ -6,8 +6,10 @@ import { formatClock } from "../lib/format";
 import { HOME_SERVICES, useStore } from "../lib/store";
 import { waitForStatus } from "../lib/status";
 import type { ServiceHealth } from "../lib/types";
+import { Icon, type IconName } from "../components/icons";
+import { PowerButton } from "../components/PowerButton";
 import { StrategyPickerModal } from "../components/StrategyPickerModal";
-import { Badge, Button, Panel, Row, Spinner, StatusDot, Switch, type Tone } from "../components/ui";
+import { Badge, Button, Panel, Spinner, StatusDot, type Tone } from "../components/ui";
 
 type ToggleAction = "starting" | "stopping" | null;
 
@@ -51,6 +53,34 @@ function ServiceRow({ id, health }: { id: string; health?: ServiceHealth }) {
       ) : (
         <span className="text-[13px] text-faint">{t("home.notChecked")}</span>
       )}
+    </div>
+  );
+}
+
+function Tile({
+  label,
+  on,
+  busy,
+  disabled,
+  icon,
+  onClick,
+  extra,
+}: {
+  label: string;
+  on: boolean;
+  busy: boolean;
+  disabled: boolean;
+  icon: IconName;
+  onClick: () => void;
+  extra?: ReactNode;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex w-28 flex-col items-center gap-2 text-center">
+      <PowerButton size="md" icon={icon} on={on} busy={busy} disabled={disabled} label={label} onClick={onClick} />
+      <div className="text-[13px] font-medium">{label}</div>
+      <div className={on ? "text-xs text-ok" : "text-xs text-muted"}>{on ? t("home.tileOn") : t("home.tileOff")}</div>
+      {extra}
     </div>
   );
 }
@@ -216,35 +246,73 @@ export function HomePage() {
           : t("home.statusOff");
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-6 pb-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-3">
-            <StatusDot tone={zapretOn ? "ok" : "off"} size={11} />
-            <h1 className="text-[28px] font-semibold leading-none">{title}</h1>
-          </div>
-          <p className={error ? "mt-3 text-sm text-fail" : "mt-3 truncate text-sm text-muted"}>
-            {error ??
-              (viaService
-                ? t("home.viaService", { name: strategyName })
-                : t("home.strategyLine", { name: strategyName }))}
+    <div className="space-y-7">
+      <section className="flex flex-col items-center gap-4 text-center">
+        <PowerButton
+          on={zapretAction ? zapretAction === "starting" : zapretOn}
+          busy={zapretAction !== null}
+          disabled={!components?.zapretInstalled && !zapretOn}
+          label="Zapret"
+          onClick={() => void toggleZapret(!zapretOn)}
+        />
+        <div className="min-h-9">
+          <h1 className="text-2xl font-semibold leading-tight">{title}</h1>
+          <p className={error ? "mt-1.5 max-w-md text-sm text-fail" : "mt-1.5 text-sm text-muted"}>
+            {error ?? (viaService ? t("home.viaService", { name: strategyName }) : null)}
           </p>
         </div>
-        <div className="flex shrink-0 gap-2">
-          <Button size="lg" onClick={() => setPickerOpen(true)} disabled={viaService}>
-            {t("home.changeStrategy")}
-          </Button>
-          <Button
-            size="lg"
-            variant={zapretOn ? "secondary" : "primary"}
-            icon="power"
-            disabled={zapretAction !== null || (!components?.zapretInstalled && !zapretOn)}
-            onClick={() => void toggleZapret(!zapretOn)}
-          >
-            {zapretOn ? t("home.stop") : t("home.start")}
-          </Button>
-        </div>
-      </div>
+        <button
+          type="button"
+          disabled={viaService}
+          onClick={() => setPickerOpen(true)}
+          className="flex min-w-64 items-center justify-between gap-4 rounded-panel border border-line bg-panel px-4 py-2.5 text-left transition-colors enabled:hover:border-line-strong disabled:opacity-50"
+        >
+          <span className="min-w-0">
+            <span className="block text-xs text-muted">{t("home.strategyLabel")}</span>
+            <span className="block truncate text-sm font-medium">{strategyName}</span>
+          </span>
+          <Icon name="chevronDown" size={16} className="shrink-0 text-muted" />
+        </button>
+      </section>
+
+      <section className="flex items-start justify-center gap-12">
+        <Tile
+          label={t("home.tgShort")}
+          on={tgAction ? tgAction === "starting" : !!tg?.running}
+          busy={tgAction !== null}
+          disabled={!components?.tgInstalled && !tg?.running}
+          icon="send"
+          onClick={() => void toggleTg(!tg?.running)}
+        />
+        <Tile
+          label={t("home.warpShort")}
+          on={warpAction ? warpAction === "starting" : !!warp?.connected}
+          busy={warpAction !== null}
+          disabled={!warp?.installed && !warp?.connected}
+          icon="cloud"
+          onClick={() => void toggleWarp(!warp?.connected)}
+        />
+        <Tile
+          label={t("home.autopilotTitle")}
+          on={!!settings?.autopilot.enabled}
+          busy={false}
+          disabled={!settings}
+          icon="activity"
+          onClick={() =>
+            settings &&
+            void updateSettings({ autopilot: { ...settings.autopilot, enabled: !settings.autopilot.enabled } })
+          }
+          extra={
+            <button
+              type="button"
+              onClick={() => setPage("autopilot")}
+              className="text-xs text-muted underline-offset-2 hover:text-fg hover:underline"
+            >
+              {t("home.configure")}
+            </button>
+          }
+        />
+      </section>
 
       <Panel
         title={t("home.servicesTitle")}
@@ -268,40 +336,6 @@ export function HomePage() {
         {HOME_SERVICES.map((id) => (
           <ServiceRow key={id} id={id} health={serviceHealth[id]} />
         ))}
-      </Panel>
-
-      <Panel title={t("home.extrasTitle")}>
-        <Row title={t("home.tgTitle")} description={t("home.tgDesc")}>
-          {tgAction && <Spinner size={14} />}
-          <Switch
-            label={t("home.tgTitle")}
-            checked={tgAction ? tgAction === "starting" : !!tg?.running}
-            disabled={tgAction !== null || (!components?.tgInstalled && !tg?.running)}
-            onChange={(v) => void toggleTg(v)}
-          />
-        </Row>
-        <Row title={t("home.warpTitle")} description={t("home.warpDesc")}>
-          {warpAction && <Spinner size={14} />}
-          <Switch
-            label={t("home.warpTitle")}
-            checked={warpAction ? warpAction === "starting" : !!warp?.connected}
-            disabled={warpAction !== null || (!warp?.installed && !warp?.connected)}
-            onChange={(v) => void toggleWarp(v)}
-          />
-        </Row>
-        <Row title={t("home.autopilotTitle")} description={t("home.autopilotDesc")}>
-          <Button variant="ghost" size="sm" onClick={() => setPage("autopilot")}>
-            {t("home.configure")}
-          </Button>
-          <Switch
-            label={t("home.autopilotTitle")}
-            checked={!!settings?.autopilot.enabled}
-            disabled={!settings}
-            onChange={(v) =>
-              settings && void updateSettings({ autopilot: { ...settings.autopilot, enabled: v } })
-            }
-          />
-        </Row>
       </Panel>
 
       <div className="flex items-center justify-between gap-4 px-1 text-[13px]">

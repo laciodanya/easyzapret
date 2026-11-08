@@ -79,6 +79,11 @@ export default {
     initFailed: "Could not load settings. Try restarting the app.",
   },
   home: {
+    tgShort: "Telegram",
+    warpShort: "WARP",
+    tileOn: "On",
+    tileOff: "Off",
+    strategyLabel: "Strategy",
     tgTitle: "Telegram Proxy",
     tgDesc: "A local proxy for a more reliable Telegram Desktop connection",
     warpTitle: "Cloudflare WARP",

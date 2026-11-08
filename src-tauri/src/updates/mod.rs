@@ -79,7 +79,7 @@ pub struct ComponentsState {
 
 fn http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
-        .user_agent("EasyZapret/0.5.4 (https://github.com/laciodanya/easyzapret)")
+        .user_agent(concat!("EasyZapret/", env!("CARGO_PKG_VERSION"), " (https://github.com/laciodanya/easyzapret)"))
         .build()
         .map_err(|e| e.to_string())
 }
@@ -453,6 +453,7 @@ async fn install_tg(app: &AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub async fn install_component(app: AppHandle, component: String) -> Result<String, String> {
     paths::ensure_dirs().map_err(|e| e.to_string())?;
+    logs::append("app", &format!("install requested: {component}"));
     let result = match component.as_str() {
         "zapret" => install_zapret(&app).await,
         "tgproxy" => install_tg(&app).await,
@@ -468,7 +469,7 @@ pub async fn install_component(app: AppHandle, component: String) -> Result<Stri
         },
     );
     if let Err(e) = &result {
-        logs::append("app", &format!("install {component} failed: {e}"));
+        logs::error("app", &format!("install {component} failed: {e}"));
     }
     result
 }
@@ -489,6 +490,7 @@ pub fn get_components_state() -> ComponentsState {
 pub async fn check_updates() -> Vec<UpdateStatus> {
     let s = settings::load();
     let mut out = Vec::new();
+    logs::append("app", "checking component updates");
     for (component, repo, installed) in [
         ("zapret", ZAPRET_REPO, installed_zapret_version()),
         ("tgproxy", TG_REPO, s.tg_version.clone()),
@@ -502,15 +504,30 @@ pub async fn check_updates() -> Vec<UpdateStatus> {
                 release_url: Some(rel.html_url),
                 error: None,
             }),
-            Err(e) => out.push(UpdateStatus {
-                component: component.into(),
-                installed: installed.clone(),
-                latest: None,
-                update_available: false,
-                release_url: None,
-                error: Some(e),
-            }),
+            Err(e) => {
+                logs::warn("app", &format!("update check for {component} failed: {e}"));
+                out.push(UpdateStatus {
+                    component: component.into(),
+                    installed: installed.clone(),
+                    latest: None,
+                    update_available: false,
+                    release_url: None,
+                    error: Some(e),
+                });
+            }
         }
+    }
+    for u in &out {
+        logs::append(
+            "app",
+            &format!(
+                "update check {}: installed {} · latest {} · update available: {}",
+                u.component,
+                u.installed.as_deref().unwrap_or("-"),
+                u.latest.as_deref().unwrap_or("-"),
+                u.update_available
+            ),
+        );
     }
     out
 }

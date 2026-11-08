@@ -3,14 +3,14 @@ import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { errText } from "../lib/errors";
 import { toast } from "../lib/toast";
-import { Button, Card, Note, PageHeader, Spinner, cn } from "../components/ui";
+import { Button, Note, Panel, Spinner, cn } from "../components/ui";
 import type { UserListFile } from "../lib/types";
 
-export function ListsPage({ embedded }: { embedded?: boolean } = {}) {
+export function ListsPage() {
   const { t } = useTranslation();
   const [files, setFiles] = useState<UserListFile[]>([]);
   const [active, setActive] = useState<string>("list-general-user.txt");
-  // Unsaved edits are kept per file so switching tabs never loses changes.
+  // Unsaved edits are kept per file so switching files never loses changes.
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
@@ -20,16 +20,12 @@ export function ListsPage({ embedded }: { embedded?: boolean } = {}) {
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   const activeFile = files.find((f) => f.name === active);
   const content = edits[active] ?? activeFile?.content ?? "";
   const dirty = edits[active] !== undefined && edits[active] !== (activeFile?.content ?? "");
-
-  function switchFile(name: string) {
-    setActive(name);
-  }
 
   async function save() {
     setSaving(true);
@@ -49,41 +45,45 @@ export function ListsPage({ embedded }: { embedded?: boolean } = {}) {
     }
   }
 
-  return (
-    <div className={embedded ? "flex h-full flex-col" : "mx-auto flex h-full max-w-3xl flex-col"}>
-      {!embedded && (
-        <PageHeader title={t("lists.title")} description={t("lists.description")} />
-      )}
+  const hint = t(`lists.hint.${active}`, { defaultValue: "" });
 
-      <div className="mb-3 flex flex-wrap gap-1.5">
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-1.5">
         {files.map((f) => (
           <button
             key={f.name}
-            onClick={() => switchFile(f.name)}
+            type="button"
+            onClick={() => setActive(f.name)}
             className={cn(
-              "rounded-lg px-3 py-1.5 font-mono text-xs font-medium transition-colors",
+              "h-8 rounded-control px-3 font-mono text-xs transition-colors",
               active === f.name
-                ? "bg-teal-500/15 text-teal-700 dark:text-teal-300"
-                : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800",
+                ? "bg-accent-soft font-medium text-accent-text"
+                : "text-muted hover:bg-raised hover:text-fg",
             )}
           >
             {f.name}
+            {edits[f.name] !== undefined && edits[f.name] !== f.content && " •"}
             {!f.exists && " *"}
           </button>
         ))}
       </div>
 
-      <Card className="flex min-h-0 flex-1 flex-col p-4">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <span className="text-xs text-slate-400">
-            {t(`lists.hint.${active}` as never, { defaultValue: "" })}
-            {activeFile && !activeFile.exists && ` — ${t("lists.fileMissing")}`}
-          </span>
-          <Button variant="primary" onClick={save} disabled={!dirty || saving}>
-            {saving ? <Spinner /> : null}
+      <Panel
+        title={active}
+        description={
+          [hint, activeFile && !activeFile.exists ? t("lists.fileMissing") : ""]
+            .filter(Boolean)
+            .join(" — ") || undefined
+        }
+        action={
+          <Button variant="primary" onClick={() => void save()} disabled={!dirty || saving}>
+            {saving && <Spinner size={14} />}
             {t("common.save")}
           </Button>
-        </div>
+        }
+        padded
+      >
         <textarea
           value={content}
           onChange={(e) => {
@@ -91,13 +91,11 @@ export function ListsPage({ embedded }: { embedded?: boolean } = {}) {
             setEdits((prev) => ({ ...prev, [active]: value }));
           }}
           spellCheck={false}
-          className="min-h-0 flex-1 resize-none rounded-xl bg-slate-50 p-3 font-mono text-xs leading-relaxed text-slate-700 outline-none ring-1 ring-slate-200 focus:ring-teal-500 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800"
+          className="h-[360px] w-full resize-y rounded-control border border-line bg-sunken p-3 font-mono text-xs leading-relaxed focus:border-accent"
         />
-      </Card>
+      </Panel>
 
-      <div className="mt-3">
-        <Note tone="info">{t("strategies.restartHint")}</Note>
-      </div>
+      <Note>{t("strategies.restartHint")}</Note>
     </div>
   );
 }

@@ -10,6 +10,9 @@ const KNOWN_ERRORS = [
   "dpi_suite_unavailable",
   "zapret_required",
   "warp_not_installed",
+  "autopilot_busy",
+  "no_services",
+  "no_configs",
 ];
 
 export function errText(t: TFunction, e: unknown): string {

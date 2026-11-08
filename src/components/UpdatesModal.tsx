@@ -6,7 +6,7 @@ import { installAppUpdate, type AppUpdateProgress } from "../lib/appUpdate";
 import { errText } from "../lib/errors";
 import { toast } from "../lib/toast";
 import { useStore } from "../lib/store";
-import { Button, Modal, Spinner } from "../components/ui";
+import { Button, ConfirmModal, Modal, Spinner } from "./ui";
 
 export function UpdatesModal() {
   const { t } = useTranslation();
@@ -67,64 +67,61 @@ export function UpdatesModal() {
   return (
     <Modal
       open
-      onClose={dismissUpdatesModal}
+      onClose={confirm ? undefined : dismissUpdatesModal}
       title={t("settings.updatesModalTitle")}
       footer={
-        <Button onClick={dismissUpdatesModal} disabled={installing !== null || appBusy}>
+        <Button variant="ghost" onClick={dismissUpdatesModal} disabled={installing !== null || appBusy}>
           {t("common.later")}
         </Button>
       }
     >
-      <p className="mb-4">{t("settings.updatesModalText")}</p>
-      <div className="space-y-2">
+      <p className="mb-2">{t("settings.updatesModalText")}</p>
+      <div className="divide-y divide-line">
         {appAvailable && (
-          <div className="flex flex-col gap-2 rounded-xl bg-amber-500/10 px-4 py-3 ring-1 ring-amber-500/25 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center justify-between gap-4 py-3">
             <div>
-              <div className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-                EasyZapret
-              </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                {appUpdate?.current ?? "—"} →{" "}
-                <span className="font-semibold">{appUpdate?.latest}</span>
+              <div className="text-sm font-medium text-fg">EasyZapret</div>
+              <div className="text-[13px]">
+                {appUpdate?.current ?? "—"} → <span className="font-medium text-fg">{appUpdate?.latest}</span>
               </div>
             </div>
-            <div className="flex shrink-0 flex-wrap gap-2">
-            <Button
-              variant="primary"
-              disabled={appBusy || installing !== null}
-              onClick={() => installApp()}
-            >
-              {appBusy ? <Spinner /> : null}
-              {appBusy && appProgress != null
-                ? t("settings.installingUpdate", { percent: appProgress })
-                : t("settings.installUpdate")}
-            </Button>
-            {appUpdate?.releaseUrl && (
+            <div className="flex shrink-0 gap-2">
+              {appUpdate?.releaseUrl && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={appBusy}
+                  onClick={() => openUrl(appUpdate.releaseUrl!).catch(() => {})}
+                >
+                  {t("settings.downloadUpdate")}
+                </Button>
+              )}
               <Button
-                variant="ghost"
-                disabled={appBusy}
-                onClick={() => openUrl(appUpdate.releaseUrl!).catch(() => {})}
+                size="sm"
+                variant="primary"
+                disabled={appBusy || installing !== null}
+                onClick={() => void installApp()}
               >
-                {t("settings.downloadUpdate")}
+                {appBusy && <Spinner size={14} />}
+                {appBusy && appProgress != null
+                  ? t("settings.installingUpdate", { percent: appProgress })
+                  : t("settings.installUpdate")}
               </Button>
-            )}
             </div>
           </div>
         )}
         {available.map((u) => (
-          <div
-            key={u.component}
-            className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800/50"
-          >
+          <div key={u.component} className="flex items-center justify-between gap-4 py-3">
             <div>
-              <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              <div className="text-sm font-medium text-fg">
                 {u.component === "zapret" ? "Zapret" : "Telegram Proxy"}
               </div>
-              <div className="text-xs text-slate-400">
-                {u.installed ?? "—"} → <span className="font-semibold">{u.latest}</span>
+              <div className="text-[13px]">
+                {u.installed ?? "—"} → <span className="font-medium text-fg">{u.latest}</span>
                 {u.releaseUrl && (
                   <button
-                    className="ml-2 underline"
+                    type="button"
+                    className="ml-3 text-accent-text underline-offset-2 hover:underline"
                     onClick={() => openUrl(u.releaseUrl!).catch(() => {})}
                   >
                     {t("settings.openRelease")}
@@ -133,36 +130,27 @@ export function UpdatesModal() {
               </div>
             </div>
             <Button
+              size="sm"
               variant="primary"
               disabled={installing !== null}
               onClick={() => setConfirm(u.component)}
             >
-              {installing === u.component ? <Spinner /> : null}
+              {installing === u.component && <Spinner size={14} />}
               {t("common.update")}
             </Button>
           </div>
         ))}
       </div>
 
-      <Modal
+      <ConfirmModal
         open={confirm !== null}
-        onClose={() => setConfirm(null)}
         title={t("settings.updateConfirmTitle")}
-        footer={
-          <>
-            <Button onClick={() => setConfirm(null)}>{t("common.cancel")}</Button>
-            <Button variant="primary" onClick={() => confirm && install(confirm)}>
-              {t("settings.updateContinue")}
-            </Button>
-          </>
-        }
+        confirmLabel={t("settings.updateContinue")}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => confirm && void install(confirm)}
       >
-        <p>
-          {confirm === "tgproxy"
-            ? t("settings.updateConfirmTg")
-            : t("settings.updateConfirmZapret")}
-        </p>
-      </Modal>
+        {confirm === "tgproxy" ? t("settings.updateConfirmTg") : t("settings.updateConfirmZapret")}
+      </ConfirmModal>
     </Modal>
   );
 }

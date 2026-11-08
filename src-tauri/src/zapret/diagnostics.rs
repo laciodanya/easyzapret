@@ -182,7 +182,15 @@ pub fn run_diagnostics() -> Vec<DiagItem> {
             out.push(item("conflicting_bypasses", "fail", conflicts.join(", ")));
         }
 
-        logs::append("app", "Diagnostics executed");
+        for d in &out {
+            let line = format!("diagnostics {}: {} {}", d.id, d.status, d.detail);
+            match d.status.as_str() {
+                "fail" => logs::warn("app", line.trim_end()),
+                "warn" => logs::warn("app", line.trim_end()),
+                _ => logs::append("app", line.trim_end()),
+            }
+        }
+        logs::append("app", &format!("Diagnostics executed ({} checks)", out.len()));
         out
     }
 }

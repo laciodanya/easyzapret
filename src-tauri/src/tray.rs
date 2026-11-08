@@ -115,6 +115,7 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
             "quit" => {
                 // Full exit: stop processes we manage; an installed service
                 // is intentionally left running (it is autonomous).
+                crate::logs::append("app", "quit requested from tray — stopping managed processes");
                 let state = app.state::<AppState>();
                 crate::warp::disconnect_quiet();
                 crate::zapret::process::stop(&state);
@@ -122,6 +123,7 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 app.exit(0);
             }
             "toggle_zapret" => {
+                crate::logs::append("app", "tray: toggle Zapret");
                 let state = app.state::<AppState>();
                 if crate::zapret::process::winws_running() {
                     crate::zapret::process::stop(&state);
@@ -140,6 +142,7 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 update_tray_now(app);
             }
             "toggle_tg" => {
+                crate::logs::append("app", "tray: toggle Telegram Proxy");
                 if crate::tg_proxy::proxy_running() {
                     let _ = crate::tg_proxy::stop_tg();
                 } else {
@@ -148,6 +151,7 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 update_tray_now(app);
             }
             "toggle_warp" => {
+                crate::logs::append("app", "tray: toggle WARP");
                 let state = app.state::<AppState>();
                 if crate::warp::quick_status().connected {
                     let _ = crate::warp::warp_disconnect(state);

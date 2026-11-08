@@ -83,7 +83,11 @@ pub fn start_strategy(state: &AppState, bat_name: &str) -> Result<(), String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let mut child = cmd.spawn().map_err(|e| format!("failed to start winws.exe: {e}"))?;
+    let mut child = cmd.spawn().map_err(|e| {
+        logs::error("zapret", &format!("failed to start winws.exe: {e}"));
+        format!("failed to start winws.exe: {e}")
+    })?;
+    logs::append("zapret", &format!("winws.exe started (pid {})", child.id()));
 
     // Pipe winws output into zapret.log for the in-app log viewer.
     if let Some(stdout) = child.stdout.take() {
@@ -103,6 +107,19 @@ pub fn start_strategy(state: &AppState, bat_name: &str) -> Result<(), String> {
 
     *state.zapret_child.lock().unwrap() = Some(child);
     *state.current_strategy.lock().unwrap() = Some(bat_name.to_string());
+
+    // winws exits within a second or two when its args or the driver are wrong.
+    // Record that fact so a log shared on GitHub explains "it just turns off".
+    let watch = bat_name.to_string();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(4));
+        if !winws_running() {
+            logs::error(
+                "zapret",
+                &format!("winws.exe is not running 4s after start of '{watch}' — it exited early (check the output above)"),
+            );
+        }
+    });
     Ok(())
 }
 

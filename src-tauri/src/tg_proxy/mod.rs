@@ -98,20 +98,28 @@ fn build_tg_status(running: bool) -> TgStatus {
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
 
-    let (tg_link, share_link) = match &secret {
+    // tg-ws-proxy stores the bare 32-hex secret; Telegram needs the "dd"
+    // (padded MTProto) prefix both in links and when typed in by hand.
+    let link_host = if host == "0.0.0.0" || host.is_empty() { "127.0.0.1".to_string() } else { host.clone() };
+    let full_secret = secret.as_ref().map(|s| format!("dd{s}"));
+    let (tg_link, share_link) = match &full_secret {
         Some(s) => (
-            Some(format!("tg://proxy?server={host}&port={port}&secret={s}")),
-            Some(format!("https://t.me/proxy?server={host}&port={port}&secret={s}")),
+            Some(format!("tg://proxy?server={link_host}&port={port}&secret={s}")),
+            Some(format!("https://t.me/proxy?server={link_host}&port={port}&secret={s}")),
         ),
-        None => (None, None),
+        // Older tg-ws-proxy builds had no secret and spoke plain SOCKS5.
+        None => (
+            Some(format!("tg://socks?server={link_host}&port={port}")),
+            Some(format!("https://t.me/socks?server={link_host}&port={port}")),
+        ),
     };
 
     TgStatus {
         installed: paths::tg_exe().exists(),
         running,
-        host,
+        host: link_host,
         port,
-        secret,
+        secret: full_secret,
         tg_link,
         share_link,
     }
@@ -131,13 +139,14 @@ pub fn start_tg() -> Result<(), String> {
         .current_dir(paths::tg_dir())
         .spawn()
         .map_err(|e| format!("failed to start TgWsProxy: {e}"))?;
-    logs::append("tgproxy", "TgWsProxy started");
+    logs::append("tgproxy", &format!("TgWsProxy started from {}", exe.display()));
     Ok(())
 }
 
 #[tauri::command]
 pub fn stop_tg() -> Result<(), String> {
+    let was_running = proxy_running();
     kill_all();
-    logs::append("tgproxy", "TgWsProxy stopped");
+    logs::append("tgproxy", &format!("TgWsProxy stopped (was running: {was_running})"));
     Ok(())
 }

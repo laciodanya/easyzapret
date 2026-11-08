@@ -7,7 +7,7 @@ use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::zapret::strategy;
-use crate::{logs, paths, AppState};
+use crate::{logs, paths, probe, services, AppState};
 
 const CURL_TIMEOUT_SECS: u64 = 5;
 const MAX_PARALLEL: usize = 8;
@@ -170,6 +170,9 @@ struct TargetOutcome {
     /// ok | warn | fail | timeout
     status: String,
     detail: String,
+    /// Service id for the quick service tests.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    group: Option<String>,
 }
 
 async fn run_standard_target(config: &str, t: &StandardTarget) -> TargetOutcome {
@@ -223,6 +226,86 @@ async fn run_standard_target(config: &str, t: &StandardTarget) -> TargetOutcome 
         name: t.name.clone(),
         status: status.into(),
         detail: pieces.join("  "),
+        group: None,
+    }
+}
+
+// ---------------- quick service tests ----------------
+
+const SERVICE_TIMEOUT_SECS: u64 = 5;
+
+/// One probe of the curated per-service list: HTTPS reachability, plus the
+/// bulk-upload freeze check for hosts that carry heavy traffic.
+async fn run_service_target(
+    config: &str,
+    service: &str,
+    target: &services::Target,
+    payload: Option<&std::path::Path>,
+) -> TargetOutcome {
+    let mut pieces = Vec::new();
+    let mut status = "ok";
+
+    if let Some(url) = target.url {
+        let http = probe::http(url, SERVICE_TIMEOUT_SECS).await;
+        if http.ok {
+            pieces.push(format!("HTTPS {} · {} ms", http.code, http.millis));
+            if target.bulk {
+                if let Some(file) = payload {
+                    let bulk = probe::bulk(services::host_of(url), file, SERVICE_TIMEOUT_SECS).await;
+                    match bulk.state {
+                        probe::BulkState::Ok => pieces.push(format!("bulk OK ({:.1}s)", bulk.millis as f64 / 1000.0)),
+                        probe::BulkState::Blocked => {
+                            pieces.push("bulk FROZEN (throttled)".into());
+                            status = "warn";
+                        }
+                        probe::BulkState::Failed => {
+                            pieces.push("bulk FAIL".into());
+                            status = "warn";
+                        }
+                    }
+                }
+            }
+        } else {
+            let reason = if http.error.is_empty() { "no response".to_string() } else { http.error.clone() };
+            pieces.push(format!("HTTPS: {reason}"));
+            status = if http.error == "timeout" || http.error.to_lowercase().contains("timed out") {
+                "timeout"
+            } else {
+                "fail"
+            };
+        }
+    }
+
+    if let Some(host) = target.ping {
+        match ping_probe(host).await {
+            Some(ms) => pieces.push(format!("ping {ms}")),
+            None => {
+                pieces.push("ping: timeout".into());
+                if target.url.is_none() {
+                    status = "timeout";
+                }
+            }
+        }
+    }
+
+    TargetOutcome {
+        config: config.into(),
+        name: format!("{} · {}", service_title(service), target.name),
+        status: status.into(),
+        detail: pieces.join("  "),
+        group: Some(service.to_string()),
+    }
+}
+
+fn service_title(id: &str) -> &'static str {
+    match id {
+        "discord" => "Discord",
+        "youtube" => "YouTube",
+        "telegram" => "Telegram",
+        "cloudflare" => "Cloudflare",
+        "games" => "Games",
+        "google" => "Google",
+        _ => "Service",
     }
 }
 
@@ -319,6 +402,7 @@ async fn run_dpi_target(config: &str, entry: &DpiEntry, payload_file: &std::path
         name: format!("{country} {provider} {}", entry.id).trim().to_string(),
         status: status.into(),
         detail: pieces.join("  "),
+        group: None,
     }
 }
 
@@ -359,8 +443,16 @@ fn emit(app: &AppHandle, payload: serde_json::Value) {
 /// for each selected strategy bat — start winws, probe targets, stop.
 /// Results stream to the UI via `test-event` and into logs/tests.log.
 #[tauri::command]
-pub async fn run_tests(app: AppHandle, mode: String, configs: Vec<String>) -> Result<(), String> {
+pub async fn run_tests(
+    app: AppHandle,
+    mode: String,
+    configs: Vec<String>,
+    services: Option<Vec<String>>,
+) -> Result<(), String> {
     let state = app.state::<AppState>();
+    if state.autopilot_busy.load(Ordering::SeqCst) {
+        return Err("autopilot_busy".into());
+    }
     if state.tests_running.swap(true, Ordering::SeqCst) {
         return Err("tests_already_running".into());
     }
@@ -375,10 +467,19 @@ pub async fn run_tests(app: AppHandle, mode: String, configs: Vec<String>) -> Re
         state.tests_running.store(false, Ordering::SeqCst);
         return Err("no_configs".into());
     }
+    let service_ids: Vec<String> = services
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|id| crate::services::find(id).is_some())
+        .collect();
+    if mode == "service" && service_ids.is_empty() {
+        state.tests_running.store(false, Ordering::SeqCst);
+        return Err("no_services".into());
+    }
 
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
-        let result = run_tests_inner(&app2, &mode, &configs).await;
+        let result = run_tests_inner(&app2, &mode, &configs, &service_ids).await;
         let state = app2.state::<AppState>();
         state.tests_running.store(false, Ordering::SeqCst);
         if let Err(e) = result {
@@ -389,11 +490,19 @@ pub async fn run_tests(app: AppHandle, mode: String, configs: Vec<String>) -> Re
     Ok(())
 }
 
-async fn run_tests_inner(app: &AppHandle, mode: &str, configs: &[String]) -> Result<(), String> {
+async fn run_tests_inner(
+    app: &AppHandle,
+    mode: &str,
+    configs: &[String],
+    service_ids: &[String],
+) -> Result<(), String> {
     let state = app.state::<AppState>();
     let was_running_strategy = state.current_strategy.lock().unwrap().clone();
 
-    logs::append("tests", &format!("=== Test run started: mode={mode}, configs={configs:?} ==="));
+    logs::append(
+        "tests",
+        &format!("=== Test run started: mode={mode}, services={service_ids:?}, configs={configs:?} ==="),
+    );
 
     // winws references *-user.txt lists that the release does not ship.
     let _ = strategy::ensure_user_lists();
@@ -423,11 +532,28 @@ async fn run_tests_inner(app: &AppHandle, mode: &str, configs: &[String]) -> Res
         std::fs::write(&payload_file, &payload).map_err(|e| e.to_string())?;
     }
 
-    let total_targets = if mode == "dpi" { dpi_targets.len() } else { standard_targets.len() };
+    // Quick service tests: every target of every selected service, in order.
+    let service_jobs: Vec<(&'static str, &'static services::Target)> = if mode == "service" {
+        service_ids
+            .iter()
+            .filter_map(|id| services::find(id))
+            .flat_map(|svc| svc.targets.iter().map(move |t| (svc.id, t)))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let service_payload = if mode == "service" { probe::ensure_payload() } else { None };
+
+    let total_targets = match mode {
+        "dpi" => dpi_targets.len(),
+        "service" => service_jobs.len(),
+        _ => standard_targets.len(),
+    };
     emit(app, json!({
         "kind": "started",
         "mode": mode,
         "configs": configs,
+        "services": service_ids,
         "targetsPerConfig": total_targets,
     }));
 
@@ -466,8 +592,9 @@ async fn run_tests_inner(app: &AppHandle, mode: &str, configs: &[String]) -> Res
             }
         };
 
-        // Give winws time to initialize (PS waits 5s).
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        // Give winws time to initialize (PS waits 5s; the quick tests need less).
+        let warmup = if mode == "service" { 3 } else { 5 };
+        tokio::time::sleep(std::time::Duration::from_secs(warmup)).await;
 
         let mut ok_count = 0usize;
         let mut fail_count = 0usize;
@@ -480,7 +607,23 @@ async fn run_tests_inner(app: &AppHandle, mode: &str, configs: &[String]) -> Res
         }
 
         // Probes run concurrently in chunks of MAX_PARALLEL (PS parity).
-        let outcomes: Vec<TargetOutcome> = if mode == "dpi" {
+        let outcomes: Vec<TargetOutcome> = if mode == "service" {
+            let mut all = Vec::new();
+            for chunk in service_jobs.chunks(MAX_PARALLEL) {
+                let futures = chunk.iter().map(|(service, target)| {
+                    let config = config.clone();
+                    let app = app.clone();
+                    let payload = service_payload.clone();
+                    async move {
+                        let outcome = run_service_target(&config, service, target, payload.as_deref()).await;
+                        report(&app, &outcome);
+                        outcome
+                    }
+                });
+                all.extend(join_all(futures).await);
+            }
+            all
+        } else if mode == "dpi" {
             let mut all = Vec::new();
             for chunk in dpi_targets.chunks(MAX_PARALLEL) {
                 let futures = chunk.iter().map(|t| {
@@ -522,8 +665,31 @@ async fn run_tests_inner(app: &AppHandle, mode: &str, configs: &[String]) -> Res
         let _ = child.wait();
         crate::zapret::process::kill_all_winws();
 
+        // Per-service tally for the comparison table (quick service tests only).
+        let mut groups: std::collections::BTreeMap<String, (usize, usize)> = std::collections::BTreeMap::new();
+        for outcome in &outcomes {
+            if let Some(group) = &outcome.group {
+                let entry = groups.entry(group.clone()).or_insert((0, 0));
+                entry.1 += 1;
+                if outcome.status == "ok" {
+                    entry.0 += 1;
+                }
+            }
+        }
+        let groups_json: serde_json::Value = groups
+            .iter()
+            .map(|(id, (ok, total))| (id.clone(), json!({ "ok": ok, "total": total })))
+            .collect::<serde_json::Map<_, _>>()
+            .into();
+
         summary.push((config.clone(), ok_count, fail_count));
-        emit(app, json!({ "kind": "config-done", "config": config, "ok": ok_count, "fail": fail_count }));
+        emit(app, json!({
+            "kind": "config-done",
+            "config": config,
+            "ok": ok_count,
+            "fail": fail_count,
+            "groups": groups_json,
+        }));
     }
 
     if ipset_switched {
@@ -560,58 +726,4 @@ async fn run_tests_inner(app: &AppHandle, mode: &str, configs: &[String]) -> Res
 #[tauri::command]
 pub fn cancel_tests(state: tauri::State<'_, AppState>) {
     state.tests_cancel.store(true, Ordering::SeqCst);
-}
-
-/// Score a strategy for autopilot: higher is better. Uses the first few standard targets.
-fn score_outcome(status: &str) -> usize {
-    match status {
-        "ok" => 3,
-        "warn" => 2,
-        "timeout" => 0,
-        _ => 0,
-    }
-}
-
-/// Quick benchmark used by autopilot `best_by_tests` mode. Starts winws, probes targets, stops.
-pub async fn quick_benchmark_strategy(strategy: &str) -> Result<(usize, usize), String> {
-    let strategy_owned = strategy.to_string();
-
-    let spawn_result = tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let _ = strategy::ensure_user_lists();
-        let args = strategy::winws_args(&strategy_owned)?;
-        crate::zapret::process::kill_all_winws();
-
-        let exe = paths::zapret_bin_dir().join("winws.exe");
-        crate::util::hidden_command(&exe.to_string_lossy())
-            .args(&args)
-            .current_dir(paths::zapret_bin_dir())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|e| format!("winws start failed: {e}"))?;
-        Ok(())
-    })
-    .await
-    .map_err(|e| format!("benchmark task failed: {e}"))??;
-
-    let _ = spawn_result;
-
-    tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-
-    let targets = load_targets();
-    let sample: Vec<_> = targets.iter().take(5).collect();
-    let mut score = 0usize;
-    for t in &sample {
-        let outcome = run_standard_target(strategy, t).await;
-        score += score_outcome(&outcome.status);
-    }
-    let total = sample.len() * 3;
-
-    tokio::task::spawn_blocking(|| {
-        crate::zapret::process::kill_all_winws();
-    })
-    .await
-    .map_err(|e| format!("benchmark cleanup failed: {e}"))?;
-
-    Ok((score, total))
 }

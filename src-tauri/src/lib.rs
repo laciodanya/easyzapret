@@ -3,6 +3,8 @@ mod autostart;
 mod autopilot;
 mod logs;
 mod paths;
+mod probe;
+mod services;
 mod settings;
 mod tests;
 mod tg_proxy;
@@ -164,11 +166,12 @@ fn get_status(app: AppHandle, state: State<'_, AppState>) -> FullStatus {
 
     drop(cache);
 
+    let service_installed = zapret.service_installed;
     let status = FullStatus {
         zapret,
         tg,
         warp: warp::quick_status(),
-        autopilot: autopilot::status(),
+        autopilot: autopilot::status_with(service_installed),
         tests_running: state.tests_running.load(Ordering::SeqCst),
     };
     maybe_refresh_tray(&app, &state);
@@ -241,7 +244,10 @@ pub fn run() {
         }
     }
     let _ = paths::ensure_dirs();
-    logs::append("app", "EasyZapret starting");
+    std::panic::set_hook(Box::new(|info| {
+        logs::error("app", &format!("panic: {info}"));
+    }));
+    logs::session_start(env!("CARGO_PKG_VERSION"));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -307,6 +313,7 @@ pub fn run() {
             zapret::diagnostics::clear_discord_cache,
             tests::run_tests,
             tests::cancel_tests,
+            services::check_services,
             tg_proxy::tg_status,
             tg_proxy::start_tg,
             tg_proxy::stop_tg,
@@ -322,6 +329,9 @@ pub fn run() {
             logs::read_log,
             logs::clear_log,
             logs::logs_dir_path,
+            logs::log_ui,
+            logs::get_log_report,
+            logs::save_log_report,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EasyZapret");

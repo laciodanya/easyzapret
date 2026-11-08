@@ -2,39 +2,34 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "../lib/store";
 import { Button, Modal } from "./ui";
 
+const ITEMS = ["autopilot", "tests", "logs", "telegram", "warp", "design"] as const;
+
 export function WhatsNewModal() {
   const { t } = useTranslation();
   const { showWhatsNew, appInfo, dismissWhatsNew } = useStore();
 
   if (!showWhatsNew) return null;
 
-  const items = [t("whatsNew.itemAutostart")];
-
   return (
     <Modal
       open={showWhatsNew}
-      onClose={() => dismissWhatsNew()}
-      title={t("whatsNew.title", { version: appInfo?.version ?? "0.5.4" })}
+      onClose={() => void dismissWhatsNew()}
+      title={t("whatsNew.title", { version: appInfo?.version ?? "" })}
+      size="lg"
       footer={
-        <Button variant="primary" onClick={() => dismissWhatsNew()}>
+        <Button variant="primary" onClick={() => void dismissWhatsNew()}>
           {t("whatsNew.gotIt")}
         </Button>
       }
     >
-      <p className="mb-4 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-        {t("whatsNew.intro")}
-      </p>
-      <ul className="space-y-2.5">
-        {items.map((item) => (
-          <li
-            key={item}
-            className="flex gap-2.5 rounded-xl bg-accent-soft px-3.5 py-2.5 text-sm leading-relaxed text-slate-700 dark:text-slate-200"
-          >
-            <span className="text-accent">✦</span>
-            <span>{item}</span>
-          </li>
+      <div className="divide-y divide-line">
+        {ITEMS.map((id) => (
+          <div key={id} className="py-3">
+            <div className="text-sm font-medium text-fg">{t(`whatsNew.items.${id}.title`)}</div>
+            <div className="mt-0.5">{t(`whatsNew.items.${id}.text`)}</div>
+          </div>
         ))}
-      </ul>
+      </div>
     </Modal>
   );
 }

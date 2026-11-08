@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { api } from "../lib/api";
@@ -8,19 +8,68 @@ import { useStore } from "../lib/store";
 import {
   Badge,
   Button,
-  Card,
-  FieldRow,
-  Modal,
+  ConfirmModal,
   Note,
-  PageHeader,
+  Panel,
+  Row,
   Segmented,
+  Select,
   Spinner,
   StatusDot,
   Switch,
+  type Tone,
 } from "../components/ui";
 import type { ActiveFakesStatus, DiagItem, HostsCheck, ServiceSettings } from "../lib/types";
 
-export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
+const DIAG_TONE: Record<DiagItem["status"], Tone> = { ok: "ok", warn: "warn", fail: "fail" };
+
+function stateTone(state: string | null | undefined): Tone {
+  if (state === "RUNNING") return "ok";
+  if (state === "STOP_PENDING") return "warn";
+  return "off";
+}
+
+function FakeRow({
+  label,
+  current,
+  value,
+  files,
+  busy,
+  disabled,
+  onChange,
+  onApply,
+}: {
+  label: string;
+  current: string | null;
+  value: string;
+  files: string[];
+  busy: boolean;
+  disabled: boolean;
+  onChange: (v: string) => void;
+  onApply: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Row
+      title={label}
+      description={`${t("service.fakeCurrent")}: ${current ?? t("service.fakeUnknown")}`}
+    >
+      <Select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} className="w-56">
+        {files.map((name) => (
+          <option key={name} value={name}>
+            {name}
+          </option>
+        ))}
+      </Select>
+      <Button variant="primary" disabled={disabled || !value || value === current} onClick={onApply}>
+        {busy && <Spinner size={14} />}
+        {t("common.apply")}
+      </Button>
+    </Row>
+  );
+}
+
+export function ServicePage() {
   const { t } = useTranslation();
   const { status, settings, refreshStatus } = useStore();
   const [svc, setSvc] = useState<ServiceSettings | null>(null);
@@ -32,6 +81,7 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
   const [confirmDiscord, setConfirmDiscord] = useState(false);
   const [hosts, setHosts] = useState<HostsCheck | null>(null);
   const [diag, setDiag] = useState<DiagItem[] | null>(null);
+  const diagResults = useRef<HTMLDivElement>(null);
 
   const zapret = status?.zapret;
 
@@ -55,9 +105,18 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
   }
 
   useEffect(() => {
-    loadServiceSettings();
-    loadFakes();
+    void loadServiceSettings();
+    void loadFakes();
   }, []);
+
+  // Results land far below the fold, so bring them into view as soon as they exist.
+  useEffect(() => {
+    if (!diag) return;
+    const frame = requestAnimationFrame(() => {
+      diagResults.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [diag]);
 
   async function run(name: string, fn: () => Promise<void>, successMsg?: string) {
     setBusy(name);
@@ -72,65 +131,59 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
     }
   }
 
-  const stateTone = (state: string | null | undefined) =>
-    state === "RUNNING" ? "ok" : state === "STOP_PENDING" ? "warn" : "off";
+  const diagCounts = diag
+    ? {
+        fail: diag.filter((d) => d.status === "fail").length,
+        warn: diag.filter((d) => d.status === "warn").length,
+      }
+    : null;
+
+  const diagSummary = diagCounts
+    ? diagCounts.fail === 0 && diagCounts.warn === 0
+      ? t("service.diagAllGood")
+      : t("service.diagSummary", { fail: diagCounts.fail, warn: diagCounts.warn })
+    : t("service.diagnosticsDesc");
 
   return (
-    <div className={embedded ? "" : "mx-auto max-w-3xl"}>
-      {!embedded && (
-        <PageHeader title={t("service.title")} description={t("service.description")} />
-      )}
-
-      {/* Status */}
-      <Card className="mb-4">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-bold uppercase tracking-wide text-slate-400">
-            {t("service.statusBlock")}
-          </h3>
-          <Button variant="ghost" onClick={() => refreshStatus()}>
+    <div className="space-y-6">
+      <Panel
+        title={t("service.statusBlock")}
+        action={
+          <Button size="sm" variant="ghost" icon="refresh" onClick={() => void refreshStatus()}>
             {t("common.refresh")}
           </Button>
-        </div>
-        <div className="grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-slate-500">{t("service.serviceState")}</span>
-            <Badge tone={stateTone(zapret?.serviceState)}>
-              {zapret?.serviceInstalled
-                ? (zapret.serviceState ?? t("common.unknown"))
-                : t("common.notInstalled")}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-slate-500">{t("service.serviceStrategy")}</span>
-            <span className="font-medium text-slate-700 dark:text-slate-200">
-              {zapret?.serviceStrategy ?? "—"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-slate-500">{t("service.windivert")}</span>
-            <Badge tone={stateTone(zapret?.windivertState)}>
-              {zapret?.windivertState ?? t("common.notInstalled")}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-slate-500">{t("service.bypassRunning")}</span>
-            <Badge tone={zapret?.running ? "ok" : "off"}>
-              {zapret?.running ? t("common.running") : t("common.stopped")}
-            </Badge>
-          </div>
-        </div>
-        {zapret && !zapret.windivertSysPresent && (
-          <div className="mt-3">
-            <Note tone="fail" title={t("service.windivertSys")}>
-              {t("service.sysMissing")}
-            </Note>
-          </div>
-        )}
-      </Card>
+        }
+      >
+        <Row title={t("service.bypassRunning")}>
+          <Badge tone={zapret?.running ? "ok" : "off"}>
+            {zapret?.running ? t("common.running") : t("common.stopped")}
+          </Badge>
+        </Row>
+        <Row title={t("service.serviceState")}>
+          <Badge tone={stateTone(zapret?.serviceState)}>
+            {zapret?.serviceInstalled
+              ? (zapret.serviceState ?? t("common.unknown"))
+              : t("common.notInstalled")}
+          </Badge>
+        </Row>
+        <Row title={t("service.serviceStrategy")}>
+          <span className="text-sm">{zapret?.serviceStrategy ?? "—"}</span>
+        </Row>
+        <Row title={t("service.windivert")}>
+          <Badge tone={stateTone(zapret?.windivertState)}>
+            {zapret?.windivertState ?? t("common.notInstalled")}
+          </Badge>
+        </Row>
+      </Panel>
 
-      {/* Install / remove service */}
-      <Card className="mb-4 divide-y divide-[rgb(var(--border)/0.45)]">
-        <FieldRow
+      {zapret && !zapret.windivertSysPresent && (
+        <Note tone="fail" title={t("service.windivertSys")}>
+          {t("service.sysMissing")}
+        </Note>
+      )}
+
+      <Panel title={t("service.serviceBlock")}>
+        <Row
           title={t("service.install")}
           description={`${t("service.installDesc")} (${settings?.selectedStrategy?.replace(/\.bat$/i, "") ?? "—"})`}
         >
@@ -138,24 +191,27 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
             variant="primary"
             disabled={busy !== null || !settings?.selectedStrategy}
             onClick={() =>
-              run("install", () => api.installZapretService(settings!.selectedStrategy!), t("common.saved"))
+              void run(
+                "install",
+                () => api.installZapretService(settings!.selectedStrategy!),
+                t("common.saved"),
+              )
             }
           >
-            {busy === "install" ? <Spinner /> : null}
+            {busy === "install" && <Spinner size={14} />}
             {t("common.install")}
           </Button>
-        </FieldRow>
-        <FieldRow title={t("service.remove")} description={t("service.removeDesc")}>
+        </Row>
+        <Row title={t("service.remove")} description={t("service.removeDesc")}>
           <Button variant="danger" disabled={busy !== null} onClick={() => setConfirmRemove(true)}>
-            {busy === "remove" ? <Spinner /> : null}
+            {busy === "remove" && <Spinner size={14} />}
             {t("service.remove")}
           </Button>
-        </FieldRow>
-      </Card>
+        </Row>
+      </Panel>
 
-      {/* Settings (game filter / ipset / auto update) */}
-      <Card className="mb-4 divide-y divide-[rgb(var(--border)/0.45)]">
-        <FieldRow title={t("service.gameFilter")} description={t("service.gameFilterDesc")}>
+      <Panel title={t("service.filtersBlock")}>
+        <Row title={t("service.gameFilter")} description={t("service.gameFilterDesc")}>
           <Segmented
             value={svc?.gameFilterMode ?? "off"}
             disabled={!svc || busy !== null}
@@ -165,10 +221,10 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
               { value: "tcp", label: t("service.gameTcp") },
               { value: "udp", label: t("service.gameUdp") },
             ]}
-            onChange={(mode) => run("game", () => api.setGameFilter(mode))}
+            onChange={(mode) => void run("game", () => api.setGameFilter(mode))}
           />
-        </FieldRow>
-        <FieldRow title={t("service.ipset")} description={t("service.ipsetDesc")}>
+        </Row>
+        <Row title={t("service.ipset")} description={t("service.ipsetDesc")}>
           <Segmented
             value={svc?.ipsetMode ?? "none"}
             disabled={!svc || busy !== null}
@@ -177,28 +233,26 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
               { value: "loaded", label: "loaded" },
               { value: "any", label: "any" },
             ]}
-            onChange={(mode) => run("ipset", () => api.setIpsetMode(mode))}
+            onChange={(mode) => void run("ipset", () => api.setIpsetMode(mode))}
           />
-        </FieldRow>
-        <FieldRow title={t("service.autoUpdate")} description={t("service.autoUpdateDesc")}>
+        </Row>
+        <Row title={t("service.autoUpdate")} description={t("service.autoUpdateDesc")}>
           <Switch
+            label={t("service.autoUpdate")}
             checked={svc?.autoUpdateCheck ?? false}
             disabled={!svc || busy !== null}
-            onChange={(v) => run("autoupd", () => api.setAutoUpdateCheck(v))}
+            onChange={(v) => void run("autoupd", () => api.setAutoUpdateCheck(v))}
           />
-        </FieldRow>
-      </Card>
+        </Row>
+      </Panel>
 
-      {/* Active fakes (FlowSeal service.bat #7) */}
-      <Card className="mb-4">
-        <div className="mb-1 text-sm font-bold text-[rgb(var(--text))]">{t("service.fakesTitle")}</div>
-        <p className="mb-4 text-xs leading-relaxed text-[rgb(var(--text-secondary))]">
-          {t("service.fakesDesc")}
-        </p>
+      <Panel title={t("service.fakesTitle")} description={t("service.fakesDesc")}>
         {!fakes || fakes.files.length === 0 ? (
-          <Note tone="info">{t("service.fakesEmpty")}</Note>
+          <div className="py-4">
+            <Note>{t("service.fakesEmpty")}</Note>
+          </div>
         ) : (
-          <div className="space-y-3">
+          <>
             <FakeRow
               label={t("service.fakeDiscord")}
               current={fakes.discordCurrent}
@@ -208,7 +262,7 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
               disabled={busy !== null}
               onChange={setDiscordPick}
               onApply={() =>
-                run(
+                void run(
                   "fake-discord",
                   async () => {
                     const next = await api.setActiveFake("discord", discordPick);
@@ -219,9 +273,6 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
                   t("service.fakesApplied"),
                 )
               }
-              applyLabel={t("common.apply")}
-              currentLabel={t("service.fakeCurrent")}
-              unknownLabel={t("service.fakeUnknown")}
             />
             <FakeRow
               label={t("service.fakeGame")}
@@ -232,7 +283,7 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
               disabled={busy !== null}
               onChange={setGamePick}
               onApply={() =>
-                run(
+                void run(
                   "fake-game",
                   async () => {
                     const next = await api.setActiveFake("game", gamePick);
@@ -243,227 +294,172 @@ export function ServicePage({ embedded }: { embedded?: boolean } = {}) {
                   t("service.fakesApplied"),
                 )
               }
-              applyLabel={t("common.apply")}
-              currentLabel={t("service.fakeCurrent")}
-              unknownLabel={t("service.fakeUnknown")}
             />
-            <p className="text-[11px] text-[rgb(var(--text-secondary))]">{t("service.fakesRestartHint")}</p>
-          </div>
+            <p className="py-3 text-xs text-faint">{t("service.fakesRestartHint")}</p>
+          </>
         )}
-      </Card>
+      </Panel>
 
-      {/* Updates */}
-      <Card className="mb-4 divide-y divide-[rgb(var(--border)/0.45)]">
-        <FieldRow title={t("service.updateIpset")} description={t("service.updateIpsetDesc")}>
-          <Button
-            disabled={busy !== null}
-            onClick={() => run("ipsetupd", () => api.updateIpsetList(), t("service.updateIpsetDone"))}
-          >
-            {busy === "ipsetupd" ? <Spinner /> : null}
-            {t("common.update")}
-          </Button>
-        </FieldRow>
-        <FieldRow title={t("service.hosts")} description={t("service.hostsDesc")}>
+      <Panel title={t("service.updatesBlock")}>
+        <Row title={t("service.updateIpset")} description={t("service.updateIpsetDesc")}>
           <Button
             disabled={busy !== null}
             onClick={() =>
-              run("hosts", async () => {
+              void run("ipsetupd", () => api.updateIpsetList(), t("service.updateIpsetDone"))
+            }
+          >
+            {busy === "ipsetupd" && <Spinner size={14} />}
+            {t("common.update")}
+          </Button>
+        </Row>
+        <Row title={t("service.hosts")} description={t("service.hostsDesc")}>
+          <Button
+            disabled={busy !== null}
+            onClick={() =>
+              void run("hosts", async () => {
                 setHosts(await api.checkHostsFile());
               })
             }
           >
-            {busy === "hosts" ? <Spinner /> : null}
+            {busy === "hosts" && <Spinner size={14} />}
             {t("service.hostsCheck")}
           </Button>
-        </FieldRow>
+        </Row>
         {hosts && (
-          <div className="pt-3">
-            <Note tone={hosts.upToDate ? "info" : "warn"}>
+          <div className="py-3.5">
+            <Note
+              tone={hosts.upToDate ? "info" : "warn"}
+              action={
+                !hosts.upToDate && (
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => openPath(hosts.tempFile).catch(() => {})}>
+                      {t("service.hostsOpenTemp")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        openPath(hosts.hostsFile.replace(/\\hosts$/i, "")).catch(() => {})
+                      }
+                    >
+                      {t("service.hostsOpenFolder")}
+                    </Button>
+                  </div>
+                )
+              }
+            >
               {hosts.upToDate ? t("service.hostsOk") : t("service.hostsOutdated")}
-              {!hosts.upToDate && (
-                <div className="mt-2 flex gap-2">
-                  <Button onClick={() => openPath(hosts.tempFile).catch(() => {})}>
-                    {t("service.hostsOpenTemp")}
-                  </Button>
-                  <Button
-                    onClick={() =>
-                      openPath(hosts.hostsFile.replace(/\\hosts$/i, "")).catch(() => {})
-                    }
-                  >
-                    {t("service.hostsOpenFolder")}
-                  </Button>
-                </div>
-              )}
             </Note>
           </div>
         )}
-      </Card>
+      </Panel>
 
-      {/* Diagnostics */}
-      <Card className="mb-4">
-        <FieldRow title={t("service.diagnostics")} description={t("service.diagnosticsDesc")}>
-          <Button
-            variant="primary"
-            disabled={busy !== null}
-            onClick={() =>
-              run("diag", async () => {
-                setDiag(await api.runDiagnostics());
-              })
-            }
-          >
-            {busy === "diag" ? <Spinner /> : null}
-            {t("service.runDiagnostics")}
+      <Panel title={t("service.cacheBlock")}>
+        <Row title={t("service.clearDiscordCache")} description={t("service.cacheDesc")}>
+          <Button disabled={busy !== null} onClick={() => setConfirmDiscord(true)}>
+            {busy === "discord" && <Spinner size={14} />}
+            {t("service.clearDiscordCache")}
           </Button>
-        </FieldRow>
+        </Row>
+      </Panel>
 
-        {diag && (
-          <div className="mt-2 space-y-1.5">
-            {diag.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800/50"
-              >
-                <StatusDot tone={item.status === "ok" ? "ok" : item.status === "warn" ? "warn" : "fail"} />
-                <span className="font-medium text-slate-700 dark:text-slate-200">
-                  {t(`service.diag.${item.id}`, { defaultValue: item.id })}
-                </span>
-                {item.detail && (
-                  <span className="min-w-0 flex-1 truncate text-right text-xs text-slate-400" title={item.detail}>
-                    {item.detail}
-                  </span>
-                )}
-              </div>
-            ))}
-            <div className="flex flex-wrap gap-2 pt-2">
-              {diag.some((d) => d.id === "conflicting_bypasses" && d.status === "fail") && (
-                <Button
-                  variant="danger"
-                  disabled={busy !== null}
-                  onClick={() =>
-                    run("conflicts", async () => {
-                      const removed = await api.removeConflictingServices();
-                      toast(t("service.conflictsRemoved", { list: removed.join(", ") || "—" }), "ok");
-                      setDiag(await api.runDiagnostics());
-                    })
-                  }
-                >
-                  {t("service.removeConflicts")}
-                </Button>
-              )}
-              <Button disabled={busy !== null} onClick={() => setConfirmDiscord(true)}>
-                {t("service.clearDiscordCache")}
-              </Button>
-            </div>
-          </div>
-        )}
-      </Card>
-
-      {/* Confirmations */}
-      <Modal
-        open={confirmRemove}
-        onClose={() => setConfirmRemove(false)}
-        title={t("service.remove")}
-        footer={
-          <>
-            <Button onClick={() => setConfirmRemove(false)}>{t("common.cancel")}</Button>
+      <div ref={diagResults} className="scroll-mt-6">
+        <Panel
+          title={t("service.diagnostics")}
+          description={diagSummary}
+          action={
             <Button
-              variant="danger"
-              onClick={() => {
-                setConfirmRemove(false);
-                run("remove", () => api.removeZapretServices(), t("common.saved"));
-              }}
+              variant="primary"
+              disabled={busy !== null}
+              onClick={() =>
+                void run("diag", async () => {
+                  setDiag(await api.runDiagnostics());
+                })
+              }
             >
-              {t("common.confirm")}
+              {busy === "diag" && <Spinner size={14} />}
+              {t("service.runDiagnostics")}
             </Button>
-          </>
-        }
+          }
+        >
+          {diag && (
+            <>
+              {diag.map((item) => (
+                <div key={item.id} className="flex items-start gap-3 py-3">
+                  <span className="mt-[6px] flex">
+                    <StatusDot tone={DIAG_TONE[item.status]} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium">
+                      {t(`service.diag.${item.id}`, { defaultValue: item.id })}
+                    </div>
+                    {item.detail && (
+                      <div className="selectable mt-0.5 break-words text-[13px] text-muted">
+                        {item.detail}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {diag.some((d) => d.id === "conflicting_bypasses" && d.status === "fail") && (
+                <div className="py-3.5">
+                  <Button
+                    variant="danger"
+                    disabled={busy !== null}
+                    onClick={() =>
+                      void run("conflicts", async () => {
+                        const removed = await api.removeConflictingServices();
+                        toast(
+                          t("service.conflictsRemoved", { list: removed.join(", ") || "—" }),
+                          "ok",
+                        );
+                        setDiag(await api.runDiagnostics());
+                      })
+                    }
+                  >
+                    {t("service.removeConflicts")}
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </Panel>
+      </div>
+
+      <ConfirmModal
+        open={confirmRemove}
+        title={t("service.remove")}
+        tone="danger"
+        confirmLabel={t("common.confirm")}
+        onClose={() => setConfirmRemove(false)}
+        onConfirm={() => {
+          setConfirmRemove(false);
+          void run("remove", () => api.removeZapretServices(), t("common.saved"));
+        }}
       >
         {t("service.removeConfirm")}
-      </Modal>
+      </ConfirmModal>
 
-      <Modal
+      <ConfirmModal
         open={confirmDiscord}
-        onClose={() => setConfirmDiscord(false)}
         title={t("service.clearDiscordCache")}
-        footer={
-          <>
-            <Button onClick={() => setConfirmDiscord(false)}>{t("common.cancel")}</Button>
-            <Button
-              variant="danger"
-              onClick={() => {
-                setConfirmDiscord(false);
-                run("discord", async () => {
-                  const cleared = await api.clearDiscordCache();
-                  if (cleared.length === 0) {
-                    toast(t("service.cacheNone"), "info");
-                  } else {
-                    toast(t("service.cacheCleared", { list: cleared.join(", ") }), "ok");
-                  }
-                });
-              }}
-            >
-              {t("common.confirm")}
-            </Button>
-          </>
-        }
+        tone="danger"
+        confirmLabel={t("service.cacheConfirmButton")}
+        onClose={() => setConfirmDiscord(false)}
+        onConfirm={() => {
+          setConfirmDiscord(false);
+          void run("discord", async () => {
+            const cleared = await api.clearDiscordCache();
+            toast(
+              cleared.length === 0
+                ? t("service.cacheNone")
+                : t("service.cacheCleared", { list: cleared.join(", ") }),
+              cleared.length === 0 ? "info" : "ok",
+            );
+          });
+        }}
       >
         {t("service.clearDiscordConfirm")}
-      </Modal>
-    </div>
-  );
-}
-
-function FakeRow({
-  label,
-  current,
-  value,
-  files,
-  busy,
-  disabled,
-  onChange,
-  onApply,
-  applyLabel,
-  currentLabel,
-  unknownLabel,
-}: {
-  label: string;
-  current: string | null;
-  value: string;
-  files: string[];
-  busy: boolean;
-  disabled: boolean;
-  onChange: (v: string) => void;
-  onApply: () => void;
-  applyLabel: string;
-  currentLabel: string;
-  unknownLabel: string;
-}) {
-  return (
-    <div className="rounded-2xl bg-[rgb(var(--surface))] px-3.5 py-3 ring-1 ring-[rgb(var(--border)/0.45)]">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm font-semibold text-[rgb(var(--text))]">{label}</div>
-        <div className="text-[11px] text-[rgb(var(--text-secondary))]">
-          {currentLabel}: <span className="font-medium text-[rgb(var(--text))]">{current ?? unknownLabel}</span>
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <select
-          value={value}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value)}
-          className="min-w-0 flex-1 rounded-xl border-0 bg-[rgb(var(--surface-elevated))] px-3 py-2 text-sm ring-1 ring-[rgb(var(--border)/0.55)] outline-none focus:ring-2 focus:ring-accent"
-        >
-          {files.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
-        <Button variant="primary" disabled={disabled || !value || value === current} onClick={onApply}>
-          {busy ? <Spinner /> : null}
-          {applyLabel}
-        </Button>
-      </div>
+      </ConfirmModal>
     </div>
   );
 }

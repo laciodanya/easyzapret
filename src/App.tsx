@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { setupAutopilotListener, useStore } from "./lib/store";
 import { BootSplash } from "./components/BootSplash";
@@ -9,7 +9,6 @@ import { UpdatesModal } from "./components/UpdatesModal";
 import { WhatsNewModal } from "./components/WhatsNewModal";
 import { Toasts } from "./components/Toasts";
 import { HomePage } from "./pages/Home";
-import { StrategiesPage } from "./pages/Strategies";
 import { ZapretPage } from "./pages/Zapret";
 import { AutopilotPage } from "./pages/Autopilot";
 import { TelegramPage } from "./pages/Telegram";
@@ -34,6 +33,11 @@ export default function App() {
   const appInfo = useStore((s) => s.appInfo);
   const init = useStore((s) => s.init);
   const refreshStatus = useStore((s) => s.refreshStatus);
+  const scroller = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    scroller.current?.scrollTo({ top: 0 });
+  }, [page]);
 
   useEffect(() => {
     init();
@@ -67,7 +71,7 @@ export default function App() {
 
   if (!ready) {
     return (
-      <div className="flex h-full flex-col bg-[rgb(var(--surface))] text-[rgb(var(--text))]">
+      <div className="flex h-full flex-col bg-app text-fg">
         <TitleBar />
         <div className="min-h-0 flex-1">
           <BootSplash />
@@ -77,30 +81,31 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-[rgb(var(--surface))] text-[rgb(var(--text))]">
+    <div className="flex h-full flex-col bg-app text-fg">
       <TitleBar />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main className="flex min-w-0 flex-1 flex-col">
           {initError && (
-            <div className="bg-amber-600/90 px-5 py-2 text-center text-sm font-medium text-white">
+            <div className="border-b border-warn/30 bg-warn-soft px-6 py-2 text-center text-[13px] font-medium text-warn">
               {t("errors.initFailed")}
             </div>
           )}
           {appInfo && appInfo.isWindows && !appInfo.isAdmin && (
-            <div className="bg-red-600 px-5 py-2 text-center text-sm font-semibold text-white">
+            <div className="border-b border-fail/30 bg-fail-soft px-6 py-2 text-center text-[13px] font-medium text-fail">
               {t("adminWarning")}
             </div>
           )}
-          <div className="min-h-0 flex-1 overflow-y-auto p-5 md:p-8">
-            {page === "home" && <HomePage />}
-            {page === "autopilot" && <AutopilotPage />}
-            {page === "strategies" && <StrategiesPage />}
-            {page === "zapret" && <ZapretPage />}
-            {page === "telegram" && <TelegramPage />}
-            {page === "warp" && <WarpPage />}
-            {page === "logs" && <LogsPage />}
-            {page === "settings" && <SettingsPage />}
+          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto w-full max-w-[900px] px-8 pb-12 pt-8">
+              {page === "home" && <HomePage />}
+              {page === "autopilot" && <AutopilotPage />}
+              {page === "zapret" && <ZapretPage />}
+              {page === "telegram" && <TelegramPage />}
+              {page === "warp" && <WarpPage />}
+              {page === "logs" && <LogsPage />}
+              {page === "settings" && <SettingsPage />}
+            </div>
           </div>
         </main>
       </div>

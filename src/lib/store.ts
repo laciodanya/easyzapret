@@ -13,13 +13,13 @@ import type {
   AutostartSettings,
   ComponentsState,
   FullStatus,
+  ServiceHealth,
   Settings,
   UpdateStatus,
 } from "./types";
 
 export type Page =
   | "home"
-  | "strategies"
   | "zapret"
   | "autopilot"
   | "telegram"
@@ -30,15 +30,8 @@ export type Page =
 export type ZapretTab = "service" | "tests" | "lists";
 
 const THEME_KEY = "easyzapret-theme";
-const SIDEBAR_KEY = "easyzapret-sidebar-expanded";
-
-function readSidebarExpanded(): boolean {
-  try {
-    return localStorage.getItem(SIDEBAR_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
+/** Services shown on the home screen and re-checked on demand. */
+export const HOME_SERVICES = ["discord", "youtube", "telegram", "cloudflare"] as const;
 
 interface AppStore {
   page: Page;
@@ -57,11 +50,12 @@ interface AppStore {
   showSetup: boolean;
   showUpdatesModal: boolean;
   showWhatsNew: boolean;
-  sidebarExpanded: boolean;
+  serviceHealth: Record<string, ServiceHealth>;
+  serviceCheckedAt: Date | null;
+  serviceChecking: boolean;
 
   setPage: (page: Page) => void;
   setZapretTab: (tab: ZapretTab) => void;
-  setSidebarExpanded: (expanded: boolean) => void;
   init: () => Promise<void>;
   refreshStatus: () => Promise<void>;
   refreshComponents: () => Promise<void>;
@@ -72,24 +66,25 @@ interface AppStore {
   dismissSetup: () => void;
   dismissUpdatesModal: () => void;
   dismissWhatsNew: () => Promise<void>;
+  checkServices: () => Promise<boolean>;
 }
 
-function resolveTheme(theme: string): "light" | "purple" {
+function resolveTheme(theme: string): "light" | "dark" {
   if (theme === "light") return "light";
-  if (theme === "purple" || theme === "dark") return "purple";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "purple" : "light";
+  // "purple" is the pre-0.6 name of the dark theme.
+  if (theme === "dark" || theme === "purple") return "dark";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 export function applyTheme(theme: string) {
   const root = document.documentElement;
-  root.classList.remove("dark", "theme-purple");
+  const resolved = resolveTheme(theme);
+  root.classList.toggle("dark", resolved === "dark");
+  root.style.background = "";
   try {
-    localStorage.setItem(THEME_KEY, theme);
+    localStorage.setItem(THEME_KEY, theme === "purple" ? "dark" : theme);
   } catch {
     /* private mode */
-  }
-  if (resolveTheme(theme) === "purple") {
-    root.classList.add("dark", "theme-purple");
   }
 }
 
@@ -112,6 +107,8 @@ function defaultAutopilot(): AutopilotSettings {
     probeYoutube: true,
     probeCloudflare: true,
     probeGoogle: false,
+    probeTelegram: false,
+    deepCheck: true,
     autoEnableWarp: false,
     notifyOnSwitch: true,
     notifyOnDegraded: true,
@@ -159,18 +156,12 @@ export const useStore = create<AppStore>((set, get) => ({
   showSetup: false,
   showUpdatesModal: false,
   showWhatsNew: false,
-  sidebarExpanded: readSidebarExpanded(),
+  serviceHealth: {},
+  serviceCheckedAt: null,
+  serviceChecking: false,
 
   setPage: (page) => set({ page }),
   setZapretTab: (zapretTab) => set({ zapretTab, page: "zapret" }),
-  setSidebarExpanded: (expanded) => {
-    try {
-      localStorage.setItem(SIDEBAR_KEY, expanded ? "1" : "0");
-    } catch {
-      /* private mode */
-    }
-    set({ sidebarExpanded: expanded });
-  },
 
   init: async () => {
     try {
@@ -311,22 +302,48 @@ export const useStore = create<AppStore>((set, get) => ({
       !!updates?.some((u) => u.updateAvailable) || !!appUpdate?.updateAvailable;
     set({ showWhatsNew: false, ...(anyAvailable ? { showUpdatesModal: true } : {}) });
   },
+
+  checkServices: async () => {
+    if (get().serviceChecking) return false;
+    set({ serviceChecking: true });
+    try {
+      const result = await api.checkServices([...HOME_SERVICES]);
+      set({
+        serviceHealth: Object.fromEntries(result.map((r) => [r.id, r])),
+        serviceCheckedAt: new Date(),
+      });
+      return true;
+    } catch {
+      return false;
+    } finally {
+      set({ serviceChecking: false });
+    }
+  },
 }));
 
 /** Autopilot toast notifications — wired once at app mount. */
 export function setupAutopilotListener(t: TFunction) {
   let unlisten: UnlistenFn | null = null;
+  const bare = (name: string) => name.replace(/\.bat$/i, "");
   listen<AutopilotEvent>("autopilot-event", (e) => {
     const ev = e.payload;
-    if (ev.kind === "strategy_switched" && ev.fromStrategy && ev.toStrategy) {
-      const from = ev.fromStrategy.replace(/\.bat$/i, "");
-      const to = ev.toStrategy.replace(/\.bat$/i, "");
-      toast(t("autopilot.toastSwitch", { from, to }), "info");
-    } else if (ev.kind === "health_degraded") {
-      toast(
-        t("autopilot.toastDegraded", { percent: ev.healthPercent ?? 0 }),
-        "fail",
-      );
+    switch (ev.kind) {
+      case "strategy_switched":
+        if (ev.fromStrategy && ev.toStrategy) {
+          toast(
+            t("autopilot.toastSwitch", { from: bare(ev.fromStrategy), to: bare(ev.toStrategy) }),
+            "info",
+          );
+        }
+        break;
+      case "health_degraded":
+        toast(t("autopilot.toastDegraded", { percent: ev.healthPercent ?? 0 }), "fail");
+        break;
+      case "no_fix":
+        toast(t("autopilot.toastNoFix"), "fail");
+        break;
+      default:
+        break;
     }
   }).then((u) => {
     unlisten = u;

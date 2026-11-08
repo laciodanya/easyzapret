@@ -10,16 +10,31 @@ import { useStore } from "../lib/store";
 import {
   Badge,
   Button,
-  Card,
-  FieldRow,
-  Modal,
+  ConfirmModal,
   Note,
   PageHeader,
+  Panel,
+  ProgressBar,
+  Row,
   Segmented,
   Spinner,
   Switch,
 } from "../components/ui";
 import type { InstallProgress, Settings } from "../lib/types";
+
+const REPO_URL = "https://github.com/laciodanya/easyzapret";
+
+function Link({ href, children }: { href: string; children: string }) {
+  return (
+    <button
+      type="button"
+      className="text-accent-text underline-offset-2 hover:underline"
+      onClick={() => openUrl(href).catch(() => {})}
+    >
+      {children}
+    </button>
+  );
+}
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -43,9 +58,7 @@ export function SettingsPage() {
 
   useEffect(() => {
     let un: UnlistenFn | null = null;
-    listen<InstallProgress>("install-progress", (e) => setProgress(e.payload)).then(
-      (u) => (un = u),
-    );
+    listen<InstallProgress>("install-progress", (e) => setProgress(e.payload)).then((u) => (un = u));
     return () => {
       un?.();
     };
@@ -56,11 +69,8 @@ export function SettingsPage() {
       component === "zapret" ? components?.zapretInstalled : components?.tgInstalled;
     // Updating/reinstalling an installed component stops the running bypass —
     // warn first. A first-time install has nothing to stop.
-    if (alreadyInstalled) {
-      setConfirm(component);
-    } else {
-      void install(component);
-    }
+    if (alreadyInstalled) setConfirm(component);
+    else void install(component);
   }
 
   async function install(component: "zapret" | "tgproxy") {
@@ -109,54 +119,58 @@ export function SettingsPage() {
     }
   }
 
-  function componentCard(component: "zapret" | "tgproxy") {
+  function componentRow(component: "zapret" | "tgproxy") {
     const installed = component === "zapret" ? components?.zapretInstalled : components?.tgInstalled;
     const version = component === "zapret" ? components?.zapretVersion : components?.tgVersion;
     const upd = updates?.find((u) => u.component === component);
-    const name = component === "zapret" ? "Zapret (zapret-discord-youtube)" : "Telegram Proxy (tg-ws-proxy)";
+    const name = component === "zapret" ? "Zapret" : "Telegram Proxy";
+    const source = component === "zapret" ? "Flowseal/zapret-discord-youtube" : "Flowseal/tg-ws-proxy";
     const busy = installing === component;
     const pct =
-      busy && progress?.component === component && progress.phase === "downloading" && progress.total > 0
+      busy &&
+      progress?.component === component &&
+      progress.phase === "downloading" &&
+      progress.total > 0
         ? Math.round((progress.downloaded / progress.total) * 100)
         : null;
 
     return (
-      <div className="flex items-center justify-between gap-4 py-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+      <Row
+        key={component}
+        title={
+          <span className="flex items-center gap-2">
             {name}
             {installed ? (
               <Badge tone="ok">{version ?? t("common.installed")}</Badge>
             ) : (
               <Badge tone="off">{t("common.notInstalled")}</Badge>
             )}
-          </div>
-          <div className="mt-0.5 text-xs text-slate-400">
-            {upd?.updateAvailable ? (
-              <span className="font-medium text-amber-600 dark:text-amber-400">
-                {t("settings.updateAvailable", { version: upd.latest })}
-                {upd.releaseUrl && (
-                  <button
-                    className="ml-2 underline"
-                    onClick={() => openUrl(upd.releaseUrl!).catch(() => {})}
-                  >
-                    {t("settings.openRelease")}
-                  </button>
-                )}
-              </span>
-            ) : upd?.latest ? (
-              t("settings.upToDate")
-            ) : (
-              t("settings.notChecked")
-            )}
-          </div>
-        </div>
+          </span>
+        }
+        description={
+          upd?.updateAvailable ? (
+            <span className="text-warn">
+              {t("settings.updateAvailable", { version: upd.latest })}
+              {upd.releaseUrl && (
+                <>
+                  {" · "}
+                  <Link href={upd.releaseUrl}>{t("settings.openRelease")}</Link>
+                </>
+              )}
+            </span>
+          ) : upd?.latest ? (
+            `${source} · ${t("settings.upToDate")}`
+          ) : (
+            `${source} · ${t("settings.notChecked")}`
+          )
+        }
+      >
         <Button
           variant={upd?.updateAvailable || !installed ? "primary" : "secondary"}
           disabled={installing !== null}
           onClick={() => requestInstall(component)}
         >
-          {busy ? <Spinner /> : null}
+          {busy && <Spinner size={14} />}
           {busy
             ? pct !== null
               ? t("setup.downloading", { percent: pct })
@@ -169,16 +183,18 @@ export function SettingsPage() {
                 ? t("common.update")
                 : t("settings.reinstall")}
         </Button>
-      </div>
+      </Row>
     );
   }
 
+  const autostart = settings?.autostart;
+
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="space-y-6">
       <PageHeader title={t("settings.title")} />
 
-      <Card className="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
-        <FieldRow title={t("settings.language")}>
+      <Panel title={t("settings.appearance")}>
+        <Row title={t("settings.language")}>
           <Segmented
             value={settings?.language ?? "auto"}
             options={[
@@ -186,37 +202,27 @@ export function SettingsPage() {
               { value: "ru", label: "Русский" },
               { value: "en", label: "English" },
             ]}
-            onChange={(v) => updateSettings({ language: v === "auto" ? null : (v as "ru" | "en") })}
+            onChange={(v) => void updateSettings({ language: v === "auto" ? null : v })}
           />
-        </FieldRow>
-        <FieldRow title={t("settings.theme")}>
-          <Segmented
+        </Row>
+        <Row title={t("settings.theme")}>
+          <Segmented<Settings["theme"]>
             value={settings?.theme ?? "system"}
             options={[
               { value: "system", label: t("settings.themeSystem") },
               { value: "light", label: t("settings.themeLight") },
-              { value: "purple", label: t("settings.themePurple") },
+              { value: "dark", label: t("settings.themeDark") },
             ]}
-            onChange={(theme) => updateSettings({ theme: theme as Settings["theme"] })}
+            onChange={(theme) => void updateSettings({ theme })}
           />
-        </FieldRow>
-        <FieldRow title={t("settings.dataDir")} description={t("settings.dataDirNote")}>
-          <code className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            {appInfo?.dataDir ?? "C:\\EasyZapret"}
-          </code>
-        </FieldRow>
-      </Card>
+        </Row>
+      </Panel>
 
-      <Card className="mb-4 divide-y divide-[rgb(var(--border)/0.35)]">
-        <h3 className="pb-1 text-sm font-bold uppercase tracking-wide text-[rgb(var(--text-secondary))]">
-          {t("settings.autostartTitle")}
-        </h3>
-        <p className="pb-3 text-xs leading-relaxed text-[rgb(var(--text-secondary))]">
-          {t("settings.autostartDesc")}
-        </p>
-        <FieldRow title={t("settings.launchAtLogin")} description={t("settings.launchAtLoginDesc")}>
+      <Panel title={t("settings.autostartTitle")} description={t("settings.autostartDesc")}>
+        <Row title={t("settings.launchAtLogin")} description={t("settings.launchAtLoginDesc")}>
           <Switch
-            checked={settings?.autostart.launchAtLogin ?? true}
+            label={t("settings.launchAtLogin")}
+            checked={autostart?.launchAtLogin ?? true}
             onChange={async (v) => {
               try {
                 await updateAutostart({ launchAtLogin: v });
@@ -225,139 +231,129 @@ export function SettingsPage() {
               }
             }}
           />
-        </FieldRow>
-        <FieldRow title={t("settings.startMinimized")} description={t("settings.startMinimizedDesc")}>
+        </Row>
+        <Row title={t("settings.startMinimized")} description={t("settings.startMinimizedDesc")}>
           <Switch
-            checked={settings?.autostart.startMinimized ?? false}
-            onChange={(v) => updateAutostart({ startMinimized: v })}
+            label={t("settings.startMinimized")}
+            checked={autostart?.startMinimized ?? false}
+            onChange={(v) => void updateAutostart({ startMinimized: v })}
           />
-        </FieldRow>
-        <FieldRow title={t("settings.autoStartZapret")} description={t("settings.autoStartZapretDesc")}>
+        </Row>
+        <Row title={t("settings.autoStartZapret")} description={t("settings.autoStartZapretDesc")}>
           <Switch
-            checked={settings?.autostart.autoStartZapret ?? false}
-            disabled={settings?.autostart.autoStartWarp}
-            onChange={(v) => updateAutostart({ autoStartZapret: v })}
+            label={t("settings.autoStartZapret")}
+            checked={autostart?.autoStartZapret ?? false}
+            disabled={autostart?.autoStartWarp}
+            onChange={(v) => void updateAutostart({ autoStartZapret: v })}
           />
-        </FieldRow>
-        <FieldRow title={t("settings.autoStartWarp")} description={t("settings.autoStartWarpDesc")}>
+        </Row>
+        <Row title={t("settings.autoStartWarp")} description={t("settings.autoStartWarpDesc")}>
           <Switch
-            checked={settings?.autostart.autoStartWarp ?? false}
-            onChange={(v) => updateAutostart({ autoStartWarp: v, ...(v ? { autoStartZapret: true } : {}) })}
+            label={t("settings.autoStartWarp")}
+            checked={autostart?.autoStartWarp ?? false}
+            onChange={(v) =>
+              void updateAutostart({ autoStartWarp: v, ...(v ? { autoStartZapret: true } : {}) })
+            }
           />
-        </FieldRow>
-        <FieldRow title={t("settings.autoStartTg")} description={t("settings.autoStartTgDesc")}>
+        </Row>
+        <Row title={t("settings.autoStartTg")} description={t("settings.autoStartTgDesc")}>
           <Switch
-            checked={settings?.autostart.autoStartTg ?? false}
-            onChange={(v) => updateAutostart({ autoStartTg: v })}
+            label={t("settings.autoStartTg")}
+            checked={autostart?.autoStartTg ?? false}
+            onChange={(v) => void updateAutostart({ autoStartTg: v })}
           />
-        </FieldRow>
-        <Note tone="info">{t("settings.autostartOrderNote")}</Note>
-      </Card>
+        </Row>
+        <p className="py-3 text-xs text-faint">{t("settings.autostartOrderNote")}</p>
+      </Panel>
 
-      <Card className="mb-4">
-        <div className="mb-1 flex items-center justify-between">
-          <h3 className="text-sm font-bold uppercase tracking-wide text-slate-400">
-            {t("settings.components")}
-          </h3>
-          <Button variant="ghost" onClick={onCheckUpdates} disabled={checking}>
-            {checking ? <Spinner /> : null}
+      <Panel
+        title={t("settings.components")}
+        action={
+          <Button size="sm" variant="ghost" icon="refresh" onClick={() => void onCheckUpdates()} disabled={checking}>
             {t("settings.checkUpdates")}
           </Button>
-        </div>
-        <div className="divide-y divide-slate-100 dark:divide-slate-800">
-          {componentCard("zapret")}
-          {componentCard("tgproxy")}
-        </div>
-        <FieldRow title={t("settings.checkUpdatesOnStart")}>
+        }
+      >
+        {componentRow("zapret")}
+        {componentRow("tgproxy")}
+        <Row title={t("settings.checkUpdatesOnStart")}>
           <Switch
+            label={t("settings.checkUpdatesOnStart")}
             checked={settings?.checkUpdatesOnStart ?? true}
-            onChange={(v) => updateSettings({ checkUpdatesOnStart: v })}
+            onChange={(v) => void updateSettings({ checkUpdatesOnStart: v })}
           />
-        </FieldRow>
-      </Card>
+        </Row>
+      </Panel>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <Note tone="info" title={t("settings.secureDns")}>
-          {t("settings.secureDnsText")}
-        </Note>
+      <Panel title={t("settings.about")}>
+        <Row
+          title={`EasyZapret ${appInfo?.version ?? ""}`}
+          description={
+            appUpdate?.updateAvailable ? (
+              <span className="text-warn">
+                {t("settings.appUpdateAvailable", { version: appUpdate.latest })}
+              </span>
+            ) : appUpdate?.latest ? (
+              t("settings.appUpToDate")
+            ) : undefined
+          }
+        >
+          {appUpdate?.updateAvailable && (
+            <>
+              {appUpdate.releaseUrl && !appBusy && (
+                <Button variant="ghost" onClick={() => openUrl(appUpdate.releaseUrl!).catch(() => {})}>
+                  {t("settings.downloadUpdate")}
+                </Button>
+              )}
+              <Button variant="primary" disabled={appBusy} onClick={() => void onInstallAppUpdate()}>
+                {appBusy && <Spinner size={14} />}
+                {appBusy && appProgress != null
+                  ? t("settings.installingUpdate", { percent: appProgress })
+                  : t("settings.installUpdate")}
+              </Button>
+            </>
+          )}
+        </Row>
+        {appBusy && appProgress != null && (
+          <div className="pb-4">
+            <ProgressBar value={appProgress} />
+          </div>
+        )}
+        <Row title={t("settings.dataDir")} description={t("settings.dataDirNote")}>
+          <code className="selectable rounded-md bg-sunken px-2.5 py-1.5 font-mono text-xs">
+            {appInfo?.dataDir ?? "C:\\EasyZapret"}
+          </code>
+        </Row>
+        <Row title={t("settings.links")} description={t("settings.aboutText")}>
+          <span className="flex gap-4 text-[13px]">
+            <Link href={REPO_URL}>EasyZapret</Link>
+            <Link href="https://github.com/Flowseal/zapret-discord-youtube">zapret-discord-youtube</Link>
+            <Link href="https://github.com/Flowseal/tg-ws-proxy">tg-ws-proxy</Link>
+            <Link href={`${REPO_URL}/issues`}>{t("settings.reportProblem")}</Link>
+          </span>
+        </Row>
+        <p className="py-3 text-xs text-faint">{t("settings.appUpdateNote")}</p>
+      </Panel>
+
+      <div className="grid gap-3">
+        <Note title={t("settings.secureDns")}>{t("settings.secureDnsText")}</Note>
         <Note tone="warn" title={t("settings.antivirus")}>
           {t("settings.antivirusText")}
         </Note>
         <Note tone="fail" title={t("settings.fakeRepos")}>
           {t("settings.fakeReposText")}
         </Note>
-        <div className="md:col-span-2">
-          <Note tone={appUpdate?.updateAvailable ? "warn" : "info"} title={t("settings.about")}>
-            {t("settings.aboutText", { version: appInfo?.version ?? "0.5.4" })}{" "}
-            <button
-              className="underline"
-              onClick={() => openUrl("https://github.com/Flowseal/zapret-discord-youtube").catch(() => {})}
-            >
-              zapret-discord-youtube
-            </button>
-            {" · "}
-            <button
-              className="underline"
-              onClick={() => openUrl("https://github.com/Flowseal/tg-ws-proxy").catch(() => {})}
-            >
-              tg-ws-proxy
-            </button>
-            <div className="mt-2">
-              {appUpdate?.updateAvailable ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium text-amber-600 dark:text-amber-400">
-                    {t("settings.appUpdateAvailable", { version: appUpdate.latest })}
-                  </span>
-                  <Button
-                    variant="primary"
-                    disabled={appBusy}
-                    onClick={() => onInstallAppUpdate()}
-                  >
-                    {appBusy ? <Spinner /> : null}
-                    {appBusy && appProgress != null
-                      ? t("settings.installingUpdate", { percent: appProgress })
-                      : t("settings.installUpdate")}
-                  </Button>
-                  {appUpdate.releaseUrl && (
-                    <button
-                      className="text-sm underline"
-                      disabled={appBusy}
-                      onClick={() => openUrl(appUpdate.releaseUrl!).catch(() => {})}
-                    >
-                      {t("settings.downloadUpdate")}
-                    </button>
-                  )}
-                </div>
-              ) : appUpdate?.latest ? (
-                <span className="text-slate-400">{t("settings.appUpToDate")}</span>
-              ) : null}
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                {t("settings.appUpdateNote")}
-              </p>
-            </div>
-          </Note>
-        </div>
       </div>
 
-      <Modal
+      <ConfirmModal
         open={confirm !== null}
-        onClose={() => setConfirm(null)}
         title={t("settings.updateConfirmTitle")}
-        footer={
-          <>
-            <Button onClick={() => setConfirm(null)}>{t("common.cancel")}</Button>
-            <Button variant="primary" onClick={() => confirm && install(confirm)}>
-              {t("settings.updateContinue")}
-            </Button>
-          </>
-        }
+        confirmLabel={t("settings.updateContinue")}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => confirm && void install(confirm)}
       >
-        <p>
-          {confirm === "tgproxy"
-            ? t("settings.updateConfirmTg")
-            : t("settings.updateConfirmZapret")}
-        </p>
-      </Modal>
+        {confirm === "tgproxy" ? t("settings.updateConfirmTg") : t("settings.updateConfirmZapret")}
+      </ConfirmModal>
     </div>
   );
 }

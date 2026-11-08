@@ -151,14 +151,22 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: EasyZapret ${{ github.ref_name }}
-          draft: false
+          draft: true
           generate_release_notes: false
           body: |
             ## What's Changed
 
-            - Починен автозапуск с Windows: приложение запускается через планировщик задач с правами администратора
+            - Автопилот стал умнее: проверяет сервисы (Discord, YouTube, Telegram, Cloudflare), подтверждает сбой перед сменой стратегии, учитывает отсутствие интернета, откатывается на рабочую стратегию и запоминает удачные
+            - Быстрые тесты стратегий по сервисам (например, только Discord) с живой таблицей результатов
+            - Главный экран показывает доступность сервисов; убрана дублирующая страница «Стратегии»
+            - Диагностика сама прокручивается к результатам; очистка кэша Discord вынесена в отдельный блок, окно подтверждения по центру
+            - Telegram Proxy: сервер, порт и ключ копируются, ключ можно показать
+            - WARP: переключатель режима показывает реальный режим
+            - Логи стали подробнее, добавлен отчёт для GitHub одним нажатием
+            - Тема «Amethyst» переименована в «Тёмную»
+            - Полностью переработан интерфейс
 
-            **Full Changelog**: https://github.com/laciodanya/easyzapret/compare/v0.5.3...v0.5.4
+            **Full Changelog**: https://github.com/laciodanya/easyzapret/compare/v0.5.4...v0.6.0
           fail_on_unmatched_files: true
           files: |
             src-tauri/target/release/bundle/nsis/*-setup.exe

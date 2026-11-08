@@ -137,15 +137,51 @@ fn parse_connected(status_out: &str) -> bool {
     low.contains("connected") && !low.contains("disconnected") && !low.contains("connecting")
 }
 
+/// Maps warp-cli's wording ("Warp", "WarpWithDnsOverHttps", "DnsOverHttps",
+/// "warp+doh", ...) to the identifiers `warp-cli mode` accepts.
+fn normalize_mode(raw: &str) -> Option<String> {
+    let low: String = raw
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '+')
+        .collect();
+    if low.is_empty() {
+        return None;
+    }
+    let has_warp = low.contains("warp");
+    let doh = low.contains("dnsoverhttps") || low.contains("doh");
+    let dot = low.contains("dnsovertls") || low.contains("dot");
+    let mode = if low.contains("proxy") {
+        "proxy"
+    } else if low.contains("tunnelonly") {
+        "tunnel_only"
+    } else if has_warp && doh {
+        "warp+doh"
+    } else if has_warp && dot {
+        "warp+dot"
+    } else if doh {
+        "doh"
+    } else if dot {
+        "dot"
+    } else if has_warp {
+        "warp"
+    } else {
+        return None;
+    };
+    Some(mode.to_string())
+}
+
+/// Reads the `Mode:` line of `warp-cli settings`, ignoring look-alikes such as
+/// "Families Mode" and the "(user set)" provenance prefix.
 fn parse_mode(settings_out: &str) -> Option<String> {
     for line in settings_out.lines() {
-        let low = line.to_lowercase();
-        if low.contains("mode") {
-            if let Some((_, value)) = line.split_once(':') {
-                let value = value.trim();
-                if !value.is_empty() {
-                    return Some(value.to_string());
-                }
+        let Some((key, value)) = line.split_once(':') else { continue };
+        let key = key.rsplit(')').next().unwrap_or(key).trim().to_lowercase();
+        let is_mode = key == "mode"
+            || (key.ends_with("mode") && !key.contains("famil") && !key.contains("always"));
+        if is_mode {
+            if let Some(mode) = normalize_mode(value) {
+                return Some(mode);
             }
         }
     }
@@ -200,6 +236,7 @@ pub fn connect_with_state(state: &AppState) -> Result<(), String> {
         return Err("warp_not_installed".into());
     };
     if !zapret_running() {
+        logs::warn("warp", "connect refused: Zapret is not running");
         return Err("zapret_required".into());
     }
 
@@ -217,10 +254,11 @@ pub fn connect_with_state(state: &AppState) -> Result<(), String> {
 
     let (ok, out) = run(&cli, &["connect"], &["connect"]);
     if !ok {
+        logs::error("warp", &format!("connect failed: {}", out.trim()));
         return Err(format!("warp connect failed: {}", out.trim()));
     }
     state.warp_active.store(true, Ordering::SeqCst);
-    logs::append("warp", "WARP connect requested");
+    logs::append("warp", &format!("connect requested: {}", out.trim().replace('\n', " ")));
     Ok(())
 }
 
@@ -232,9 +270,10 @@ pub fn warp_disconnect(state: State<'_, AppState>) -> Result<(), String> {
     state.warp_active.store(false, Ordering::SeqCst);
     let (ok, out) = run(&cli, &["disconnect"], &["disconnect"]);
     if !ok {
+        logs::error("warp", &format!("disconnect failed: {}", out.trim()));
         return Err(format!("warp disconnect failed: {}", out.trim()));
     }
-    logs::append("warp", "WARP disconnected");
+    logs::append("warp", "disconnected");
     Ok(())
 }
 
@@ -268,7 +307,7 @@ pub fn warp_reset_keys(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn warp_set_mode(mode: String) -> Result<(), String> {
+pub fn warp_set_mode(mode: String) -> Result<String, String> {
     let Some(cli) = warp_cli() else {
         return Err("warp_not_installed".into());
     };
@@ -277,10 +316,14 @@ pub fn warp_set_mode(mode: String) -> Result<(), String> {
     }
     let (ok, out) = run(&cli, &["mode", &mode], &["set-mode", &mode]);
     if !ok {
+        logs::error("warp", &format!("set mode {mode} failed: {}", out.trim()));
         return Err(format!("warp set mode failed: {}", out.trim()));
     }
-    logs::append("warp", &format!("WARP mode set to {mode}"));
-    Ok(())
+    // Read the setting back so the UI shows what the client really uses.
+    let (_, settings_out) = run(&cli, &["settings"], &["settings"]);
+    let applied = parse_mode(&settings_out).unwrap_or_else(|| mode.clone());
+    logs::append("warp", &format!("mode set to {mode} (client reports {applied})"));
+    Ok(applied)
 }
 
 /// Kept for status-poll call sites. Connecting still requires Zapret, but once
@@ -291,5 +334,34 @@ pub fn enforce_dependency(_state: &AppState) {}
 pub fn disconnect_quiet() {
     if let Some(cli) = warp_cli() {
         let _ = run(&cli, &["disconnect"], &["disconnect"]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_warp_cli_mode_names() {
+        assert_eq!(normalize_mode("Warp").as_deref(), Some("warp"));
+        assert_eq!(normalize_mode(" WarpWithDnsOverHttps ").as_deref(), Some("warp+doh"));
+        assert_eq!(normalize_mode("DnsOverHttps").as_deref(), Some("doh"));
+        assert_eq!(normalize_mode("warp+doh").as_deref(), Some("warp+doh"));
+        assert_eq!(normalize_mode("doh").as_deref(), Some("doh"));
+        assert_eq!(normalize_mode("WarpWithDnsOverTls").as_deref(), Some("warp+dot"));
+        assert_eq!(normalize_mode("WarpProxy on port 40000").as_deref(), Some("proxy"));
+        assert_eq!(normalize_mode(""), None);
+    }
+
+    #[test]
+    fn reads_mode_line_from_settings_output() {
+        let out = "Merged configuration\n\
+                   (user set)\tAlways On: true\n\
+                   (user set)\tFamilies Mode: Off\n\
+                   (user set)\tMode: WarpWithDnsOverHttps\n\
+                   (network policy)\tResolve via: engage.cloudflareclient.com\n";
+        assert_eq!(parse_mode(out).as_deref(), Some("warp+doh"));
+        assert_eq!(parse_mode("Mode: Warp\n").as_deref(), Some("warp"));
+        assert_eq!(parse_mode("Families Mode: Off\n"), None);
     }
 }

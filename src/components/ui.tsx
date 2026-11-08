@@ -1,53 +1,160 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
+import { copyText } from "../lib/clipboard";
+import { toast } from "../lib/toast";
+import { Icon, type IconName } from "./icons";
 
 export function cn(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(" ");
 }
 
+export type Tone = "ok" | "off" | "warn" | "fail" | "info";
+
 /* ---------- Button ---------- */
 
 type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+type ButtonSize = "lg" | "md" | "sm";
+
+const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
+  primary: "bg-accent text-accent-fg hover:brightness-110 active:brightness-95",
+  secondary:
+    "border border-line-strong bg-panel text-fg hover:bg-raised active:bg-sunken dark:bg-raised dark:hover:bg-lift",
+  danger:
+    "border border-fail/30 bg-fail-soft text-fail hover:border-fail/50 active:brightness-95",
+  ghost: "text-muted hover:bg-raised hover:text-fg",
+};
+
+const BUTTON_SIZES: Record<ButtonSize, string> = {
+  lg: "h-10 px-5 text-sm",
+  md: "h-9 px-3.5 text-sm",
+  sm: "h-8 px-3 text-[13px]",
+};
 
 export function Button({
   variant = "secondary",
+  size = "md",
+  icon,
   className,
+  children,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
-  const variants: Record<ButtonVariant, string> = {
-    primary:
-      "bg-accent text-[rgb(var(--accent-fg))] hover:opacity-90 active:opacity-80 disabled:bg-slate-300 dark:disabled:bg-slate-700",
-    secondary:
-      "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-[rgb(var(--surface-elevated))] dark:text-[rgb(var(--text))] dark:ring-[rgb(var(--border)/0.65)] dark:hover:bg-[rgb(var(--accent)/0.08)]",
-    danger:
-      "bg-red-600/10 text-red-600 ring-1 ring-red-600/30 hover:bg-red-600/20 dark:text-red-400",
-    ghost: "text-slate-600 hover:bg-slate-100 dark:text-[rgb(var(--text-secondary))] dark:hover:bg-[rgb(var(--accent)/0.08)]",
-  };
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  icon?: IconName;
+}) {
   return (
     <button
+      type="button"
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-        variants[variant],
+        "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-control font-medium transition-colors disabled:pointer-events-none disabled:opacity-45",
+        BUTTON_VARIANTS[variant],
+        BUTTON_SIZES[size],
         className,
       )}
       {...props}
-    />
+    >
+      {icon && <Icon name={icon} size={size === "sm" ? 15 : 16} />}
+      {children}
+    </button>
   );
 }
 
-/* ---------- Card ---------- */
-
-export function Card({
+export function IconButton({
+  icon,
+  label,
   className,
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { icon: IconName; label: string }) {
   return (
-    <div
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
       className={cn(
-        "rounded-3xl bg-[rgb(var(--surface-elevated)/0.92)] p-5 shadow-sm ring-1 ring-[rgb(var(--border)/0.55)] backdrop-blur-md",
+        "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-muted transition-colors hover:bg-raised hover:text-fg disabled:pointer-events-none disabled:opacity-45",
         className,
       )}
       {...props}
-    />
+    >
+      <Icon name={icon} size={16} />
+    </button>
+  );
+}
+
+/* ---------- Panel: a titled group of rows ---------- */
+
+export function Panel({
+  title,
+  description,
+  action,
+  children,
+  className,
+  padded,
+}: {
+  title?: string;
+  description?: string;
+  action?: React.ReactNode;
+  children?: React.ReactNode;
+  className?: string;
+  /** Free-form content instead of divided rows. */
+  padded?: boolean;
+}) {
+  return (
+    <section className={cn("rounded-panel border border-line bg-panel", className)}>
+      {(title || action) && (
+        <header className="flex items-center justify-between gap-4 px-5 py-4">
+          <div className="min-w-0">
+            {title && <h2 className="text-[15px] font-semibold leading-tight">{title}</h2>}
+            {description && (
+              <p className="mt-1 max-w-[62ch] text-[13px] leading-snug text-muted">{description}</p>
+            )}
+          </div>
+          {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
+        </header>
+      )}
+      {children && (
+        <div
+          className={cn(
+            title || action ? "border-t border-line" : "",
+            padded ? "p-5" : "divide-y divide-line px-5",
+          )}
+        >
+          {children}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* ---------- Row: label on the left, control on the right ---------- */
+
+export function Row({
+  title,
+  description,
+  children,
+  align = "center",
+}: {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  children?: React.ReactNode;
+  align?: "center" | "start";
+}) {
+  return (
+    <div
+      className={cn(
+        "flex justify-between gap-6 py-3.5",
+        align === "center" ? "items-center" : "items-start",
+      )}
+    >
+      <div className="min-w-0">
+        <div className="text-sm font-medium">{title}</div>
+        {description && (
+          <div className="mt-0.5 max-w-[60ch] text-[13px] leading-snug text-muted">{description}</div>
+        )}
+      </div>
+      {children && <div className="flex shrink-0 items-center gap-2">{children}</div>}
+    </div>
   );
 }
 
@@ -57,62 +164,69 @@ export function Switch({
   checked,
   onChange,
   disabled,
-  size = "md",
+  label,
 }: {
   checked: boolean;
   onChange: (value: boolean) => void;
   disabled?: boolean;
-  size?: "md" | "lg";
+  label?: string;
 }) {
-  const dims =
-    size === "lg"
-      ? { track: "h-9 w-16", thumb: "h-7 w-7", translate: "translate-x-7" }
-      : { track: "h-6 w-11", thumb: "h-4.5 w-4.5", translate: "translate-x-5" };
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        "relative inline-flex shrink-0 items-center rounded-full p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        dims.track,
-        checked ? "bg-accent" : "bg-slate-300 dark:bg-slate-700",
+        "relative inline-flex h-[22px] w-10 shrink-0 items-center rounded-full transition-colors disabled:pointer-events-none disabled:opacity-45",
+        checked ? "bg-accent" : "bg-line-strong",
       )}
     >
       <span
         className={cn(
-          "inline-block transform rounded-full bg-white shadow transition-transform",
-          dims.thumb,
-          checked ? dims.translate : "translate-x-0",
+          "absolute left-[3px] h-4 w-4 rounded-full bg-white transition-transform duration-150",
+          checked ? "translate-x-[18px]" : "translate-x-0",
         )}
       />
     </button>
   );
 }
 
-/* ---------- Badge ---------- */
+/* ---------- Status ---------- */
 
-export function Badge({
-  tone,
-  children,
-}: {
-  tone: "ok" | "off" | "warn" | "fail" | "info";
-  children: React.ReactNode;
-}) {
-  const tones = {
-    ok: "bg-accent-soft text-accent",
-    off: "bg-slate-500/15 text-slate-600 dark:text-slate-300",
-    warn: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-    fail: "bg-red-500/15 text-red-700 dark:text-red-300",
-    info: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
-  };
+const DOT_COLORS: Record<Tone, string> = {
+  ok: "bg-ok",
+  off: "bg-faint",
+  warn: "bg-warn",
+  fail: "bg-fail",
+  info: "bg-accent",
+};
+
+export function StatusDot({ tone, size = 8 }: { tone: Tone; size?: number }) {
+  return (
+    <span
+      className={cn("inline-block shrink-0 rounded-full", DOT_COLORS[tone])}
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
+const BADGE_TONES: Record<Tone, string> = {
+  ok: "bg-ok-soft text-ok",
+  off: "bg-sunken text-muted",
+  warn: "bg-warn-soft text-warn",
+  fail: "bg-fail-soft text-fail",
+  info: "bg-accent-soft text-accent-text",
+};
+
+export function Badge({ tone, children }: { tone: Tone; children: React.ReactNode }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold",
-        tones[tone],
+        "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium",
+        BADGE_TONES[tone],
       )}
     >
       {children}
@@ -120,26 +234,30 @@ export function Badge({
   );
 }
 
-export function StatusDot({ tone }: { tone: "ok" | "off" | "warn" | "fail" }) {
-  const colors = {
-    ok: "bg-accent",
-    off: "bg-slate-400",
-    warn: "bg-amber-500",
-    fail: "bg-red-500",
-  };
-  return <span className={cn("inline-block h-2 w-2 rounded-full", colors[tone])} />;
-}
-
-/* ---------- Spinner ---------- */
-
-export function Spinner({ className }: { className?: string }) {
+export function Spinner({ className, size = 16 }: { className?: string; size?: number }) {
   return (
     <span
       className={cn(
-        "inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-[rgb(var(--accent))]",
+        "ez-spin inline-block shrink-0 rounded-full border-2 border-line-strong border-t-accent",
         className,
       )}
+      style={{ width: size, height: size }}
     />
+  );
+}
+
+export function ProgressBar({ value }: { value?: number }) {
+  return (
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-sunken">
+      {value === undefined ? (
+        <div className="ez-indeterminate h-full w-2/5 rounded-full bg-accent" />
+      ) : (
+        <div
+          className="h-full rounded-full bg-accent transition-[width] duration-300"
+          style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
+        />
+      )}
+    </div>
   );
 }
 
@@ -150,25 +268,33 @@ export function Segmented<T extends string>({
   options,
   onChange,
   disabled,
+  size = "md",
 }: {
-  value: T;
+  value: T | null;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
   disabled?: boolean;
+  size?: "md" | "sm";
 }) {
   return (
-    <div className="inline-flex rounded-xl bg-slate-100 p-1 dark:bg-[rgb(var(--surface))]">
+    <div
+      role="radiogroup"
+      className="inline-flex rounded-control border border-line bg-sunken p-0.5"
+    >
       {options.map((opt) => (
         <button
           key={opt.value}
           type="button"
+          role="radio"
+          aria-checked={value === opt.value}
           disabled={disabled}
           onClick={() => onChange(opt.value)}
           className={cn(
-            "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50",
+            "rounded-[6px] font-medium transition-colors disabled:pointer-events-none disabled:opacity-45",
+            size === "sm" ? "h-7 px-2.5 text-[13px]" : "h-8 px-3 text-[13px]",
             value === opt.value
-              ? "bg-[rgb(var(--surface-elevated))] text-slate-900 shadow-sm dark:text-white"
-              : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
+              ? "bg-lift text-fg shadow-[0_1px_2px_rgb(0_0_0/0.12)]"
+              : "text-muted hover:text-fg",
           )}
         >
           {opt.label}
@@ -178,7 +304,139 @@ export function Segmented<T extends string>({
   );
 }
 
-/* ---------- Modal ---------- */
+/* ---------- Tabs (page-level) ---------- */
+
+export function Tabs<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div role="tablist" className="mb-6 flex gap-1 border-b border-line">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          role="tab"
+          aria-selected={value === opt.value}
+          onClick={() => onChange(opt.value)}
+          className={cn(
+            "-mb-px h-10 border-b-2 px-3 text-sm font-medium transition-colors",
+            value === opt.value
+              ? "border-accent text-fg"
+              : "border-transparent text-muted hover:text-fg",
+          )}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- Form controls ---------- */
+
+const FIELD =
+  "h-9 rounded-control border border-line-strong bg-sunken px-3 text-sm text-fg transition-colors placeholder:text-faint hover:border-faint focus:border-accent disabled:opacity-50";
+
+export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return <input className={cn(FIELD, className)} {...props} />;
+}
+
+export function Select({
+  className,
+  children,
+  ...props
+}: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select className={cn(FIELD, "pr-8", className)} {...props}>
+      {children}
+    </select>
+  );
+}
+
+export function Chip({
+  active,
+  onClick,
+  disabled,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-8 items-center gap-1.5 rounded-control border px-3 text-[13px] font-medium transition-colors disabled:pointer-events-none disabled:opacity-45",
+        active
+          ? "border-accent/50 bg-accent-soft text-accent-text"
+          : "border-line-strong bg-panel text-muted hover:text-fg dark:bg-raised",
+      )}
+    >
+      {active && <Icon name="check" size={14} strokeWidth={2.25} />}
+      {children}
+    </button>
+  );
+}
+
+/** A read-only value people actually need to copy: address, port, key. */
+export function CopyField({
+  label,
+  value,
+  secret,
+  mono = true,
+}: {
+  label: string;
+  value: string;
+  secret?: boolean;
+  mono?: boolean;
+}) {
+  const { t } = useTranslation();
+  const [revealed, setRevealed] = useState(false);
+  const hidden = secret && !revealed;
+
+  async function copy() {
+    const ok = await copyText(value);
+    toast(ok ? t("common.copied", { what: label }) : t("common.copyFailed"), ok ? "ok" : "fail");
+  }
+
+  return (
+    <div className="flex items-center gap-4 py-3">
+      <div className="w-24 shrink-0 text-[13px] text-muted">{label}</div>
+      <div
+        className={cn(
+          "selectable h-9 min-w-0 flex-1 truncate rounded-control border border-line bg-sunken px-3 text-[13px] leading-9",
+          mono && "font-mono",
+        )}
+        title={hidden ? undefined : value}
+      >
+        {hidden ? "•".repeat(Math.min(value.length, 32)) : value}
+      </div>
+      <div className="flex shrink-0 gap-1">
+        {secret && (
+          <IconButton
+            icon={revealed ? "eyeOff" : "eye"}
+            label={revealed ? t("common.hide") : t("common.show")}
+            onClick={() => setRevealed((v) => !v)}
+          />
+        )}
+        <IconButton icon="copy" label={t("common.copy")} onClick={() => void copy()} />
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Modal (rendered into <body> so it is always viewport-centred) ---------- */
 
 export function Modal({
   open,
@@ -186,134 +444,168 @@ export function Modal({
   title,
   children,
   footer,
-  wide,
+  size = "md",
 }: {
   open: boolean;
   onClose?: () => void;
   title: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  wide?: boolean;
+  size?: "sm" | "md" | "lg";
 }) {
+  const { t } = useTranslation();
+
+  useEffect(() => {
+    if (!open || !onClose) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+
+  const width = { sm: "max-w-sm", md: "max-w-md", lg: "max-w-2xl" }[size];
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6" role="presentation">
+      <div className="ez-fade absolute inset-0 bg-[var(--scrim)]" onClick={onClose} />
       <div
-        className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className={cn(
-          "ez-fade-up relative z-10 max-h-[85vh] w-full overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl ring-1 ring-black/5 dark:bg-[rgb(var(--surface-elevated))] dark:ring-white/5",
-          wide ? "max-w-2xl" : "max-w-md",
+          "ez-pop relative flex max-h-[calc(100vh-48px)] w-full flex-col rounded-modal bg-panel shadow-[var(--shadow-modal)]",
+          width,
         )}
       >
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">{title}</h2>
+        <div className="flex items-start justify-between gap-4 px-6 pt-5">
+          <h2 className="text-lg font-semibold leading-snug">{title}</h2>
           {onClose && (
-            <button
-              type="button"
-              aria-label="Close"
+            <IconButton
+              icon="x"
+              label={t("common.close")}
               onClick={onClose}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-[rgb(var(--accent)/0.1)] hover:text-[rgb(var(--text))]"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.8}>
-                <path d="M2 2l8 8M10 2L2 10" strokeLinecap="round" />
-              </svg>
-            </button>
+              className="-mr-2 -mt-1"
+            />
           )}
         </div>
-        <div className="text-sm text-slate-600 dark:text-slate-300">{children}</div>
-        {footer && <div className="mt-5 flex justify-end gap-2">{footer}</div>}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-3 text-sm leading-relaxed text-muted">
+          {children}
+        </div>
+        {footer && <div className="flex justify-end gap-2 px-6 pb-5 pt-2">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
-/* ---------- Field row (label + control) ---------- */
-
-export function FieldRow({
+export function ConfirmModal({
+  open,
   title,
-  description,
   children,
+  confirmLabel,
+  tone = "primary",
+  busy,
+  onConfirm,
+  onClose,
 }: {
+  open: boolean;
   title: string;
-  description?: string;
   children: React.ReactNode;
+  confirmLabel: string;
+  tone?: "primary" | "danger";
+  busy?: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <div className="flex items-start justify-between gap-6 py-3">
-      <div className="min-w-0">
-        <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{title}</div>
-        {description && (
-          <div className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-            {description}
-          </div>
-        )}
-      </div>
-      <div className="shrink-0">{children}</div>
-    </div>
+    <Modal
+      open={open}
+      onClose={busy ? undefined : onClose}
+      title={title}
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            {t("common.cancel")}
+          </Button>
+          <Button variant={tone} onClick={onConfirm} disabled={busy}>
+            {busy && <Spinner size={14} />}
+            {confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      {children}
+    </Modal>
   );
 }
 
-/* ---------- Info note ---------- */
+/* ---------- Note ---------- */
+
+const NOTE_TONES = {
+  info: "border-line bg-raised",
+  warn: "border-warn/30 bg-warn-soft",
+  fail: "border-fail/30 bg-fail-soft",
+} as const;
+
+const NOTE_ICONS = { info: "info", warn: "alert", fail: "alert" } as const;
+const NOTE_ICON_COLORS = { info: "text-faint", warn: "text-warn", fail: "text-fail" } as const;
 
 export function Note({
   tone = "info",
   title,
   children,
+  action,
 }: {
   tone?: "info" | "warn" | "fail";
   title?: string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
+  action?: React.ReactNode;
 }) {
-  const tones = {
-    info: {
-      panel: "border-blue-500/20 bg-blue-500/[0.07]",
-      icon: "bg-blue-500/12 text-blue-600 dark:text-blue-300",
-    },
-    warn: {
-      panel: "border-amber-500/25 bg-amber-500/[0.07]",
-      icon: "bg-amber-500/12 text-amber-700 dark:text-amber-300",
-    },
-    fail: {
-      panel: "border-red-500/25 bg-red-500/[0.07]",
-      icon: "bg-red-500/12 text-red-700 dark:text-red-300",
-    },
-  };
-  const style = tones[tone];
   return (
-    <div className={cn("flex gap-3 rounded-2xl border p-4", style.panel)}>
-      <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl", style.icon)}>
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          {tone === "info" ? (
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 16v-4m0-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          ) : tone === "warn" ? (
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.3 3.7L2.6 17a2 2 0 001.7 3h15.4a2 2 0 001.7-3L13.7 3.7a2 2 0 00-3.4 0z" />
-          ) : (
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 4h.01M10.3 3.7L2.6 17a2 2 0 001.7 3h15.4a2 2 0 001.7-3L13.7 3.7a2 2 0 00-3.4 0z" />
-          )}
-        </svg>
-      </div>
-      <div className="min-w-0 pt-0.5 text-xs leading-relaxed text-slate-600 dark:text-[rgb(var(--text-secondary))]">
-        {title && <div className="mb-1 text-sm font-semibold text-slate-900 dark:text-[rgb(var(--text))]">{title}</div>}
+    <div className={cn("flex gap-3 rounded-control border px-4 py-3", NOTE_TONES[tone])}>
+      <Icon
+        name={NOTE_ICONS[tone]}
+        size={16}
+        className={cn("mt-0.5 shrink-0", NOTE_ICON_COLORS[tone])}
+      />
+      <div className="min-w-0 flex-1 text-[13px] leading-relaxed text-muted">
+        {title && <div className="font-medium text-fg">{title}</div>}
         {children}
       </div>
+      {action && <div className="shrink-0 self-center">{action}</div>}
     </div>
   );
 }
 
 /* ---------- Page header ---------- */
 
-export function PageHeader({ title, description }: { title: string; description?: string }) {
+export function PageHeader({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
   return (
-    <div className="ez-fade-up mb-6">
-      <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{title}</h1>
-      {description && (
-        <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-          {description}
-        </p>
-      )}
+    <div className="mb-6 flex items-start justify-between gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold leading-tight">{title}</h1>
+        {description && (
+          <p className="mt-1.5 max-w-[62ch] text-sm leading-relaxed text-muted">{description}</p>
+        )}
+      </div>
+      {action && <div className="flex shrink-0 items-center gap-2 pt-1">{action}</div>}
     </div>
   );
+}
+
+export function Empty({ children }: { children: React.ReactNode }) {
+  return <div className="py-8 text-center text-[13px] text-faint">{children}</div>;
 }

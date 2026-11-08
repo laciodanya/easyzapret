@@ -50,6 +50,10 @@ pub struct AutopilotSettings {
     pub probe_youtube: bool,
     pub probe_cloudflare: bool,
     pub probe_google: bool,
+    pub probe_telegram: bool,
+    /// Also run the bulk-upload freeze check (catches throttling that a plain
+    /// request misses). Costs a few seconds per check.
+    pub deep_check: bool,
     pub auto_enable_warp: bool,
     pub notify_on_switch: bool,
     pub notify_on_degraded: bool,
@@ -73,6 +77,8 @@ impl Default for AutopilotSettings {
             probe_youtube: true,
             probe_cloudflare: true,
             probe_google: false,
+            probe_telegram: false,
+            deep_check: true,
             auto_enable_warp: false,
             notify_on_switch: true,
             notify_on_degraded: true,
@@ -87,7 +93,7 @@ impl Default for AutopilotSettings {
 pub struct Settings {
     /// "ru" | "en" | null -> follow system locale
     pub language: Option<String>,
-    /// "light" | "purple" | "system" (legacy "dark" maps to purple on load)
+    /// "light" | "dark" | "system" (legacy "purple" maps to dark on load)
     pub theme: String,
     /// File name of the selected strategy bat, e.g. "general (ALT5).bat"
     pub selected_strategy: Option<String>,
@@ -128,8 +134,8 @@ pub fn load() -> Settings {
 }
 
 fn normalize_theme(s: &mut Settings) {
-    if s.theme == "dark" {
-        s.theme = "purple".into();
+    if s.theme == "purple" {
+        s.theme = "dark".into();
     }
 }
 
@@ -144,7 +150,30 @@ pub fn get_settings() -> Settings {
     load()
 }
 
+/// Collects `path: old -> new` lines for every leaf that differs.
+fn diff_json(prefix: &str, old: &serde_json::Value, new: &serde_json::Value, out: &mut Vec<String>) {
+    use serde_json::Value;
+    match (old, new) {
+        (Value::Object(a), Value::Object(b)) => {
+            for (key, nv) in b {
+                let path = if prefix.is_empty() { key.clone() } else { format!("{prefix}.{key}") };
+                diff_json(&path, a.get(key).unwrap_or(&Value::Null), nv, out);
+            }
+        }
+        _ if old != new => out.push(format!("{prefix}: {old} -> {new}")),
+        _ => {}
+    }
+}
+
 #[tauri::command]
 pub fn save_settings(settings: Settings) -> Result<(), String> {
-    save(&settings)
+    let before = serde_json::to_value(load()).unwrap_or_default();
+    let after = serde_json::to_value(&settings).unwrap_or_default();
+    let mut changes = Vec::new();
+    diff_json("", &before, &after, &mut changes);
+    save(&settings)?;
+    if !changes.is_empty() {
+        crate::logs::append("app", &format!("settings changed: {}", changes.join("; ")));
+    }
+    Ok(())
 }

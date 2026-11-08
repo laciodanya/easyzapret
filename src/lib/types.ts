@@ -18,6 +18,8 @@ export interface AutopilotSettings {
   probeYoutube: boolean;
   probeCloudflare: boolean;
   probeGoogle: boolean;
+  probeTelegram: boolean;
+  deepCheck: boolean;
   autoEnableWarp: boolean;
   notifyOnSwitch: boolean;
   notifyOnDegraded: boolean;
@@ -40,7 +42,7 @@ export interface AutostartState {
 
 export interface Settings {
   language: "ru" | "en" | null;
-  theme: "light" | "purple" | "system";
+  theme: "light" | "dark" | "system";
   selectedStrategy: string | null;
   zapretVersion: string | null;
   tgVersion: string | null;
@@ -50,15 +52,50 @@ export interface Settings {
   lastSeenChangelogVersion: string | null;
 }
 
+export type ServiceId = "discord" | "youtube" | "telegram" | "cloudflare" | "games" | "google";
+
+export interface ServiceHealth {
+  id: ServiceId;
+  ok: number;
+  total: number;
+  avgMs: number | null;
+  bulkBlocked: boolean;
+  failed: string[];
+  state: "ok" | "partial" | "down";
+}
+
+export type AutopilotHistoryKind =
+  | "check_ok"
+  | "degraded"
+  | "flaky"
+  | "offline"
+  | "switch"
+  | "recovered"
+  | "failed"
+  | "skipped"
+  | "info";
+
+export interface AutopilotHistoryEntry {
+  at: string;
+  kind: AutopilotHistoryKind;
+  message: string;
+}
+
 export interface AutopilotStatus {
   enabled: boolean;
   checking: boolean;
+  switching: boolean;
   lastCheckAt: string | null;
   lastHealthPercent: number | null;
   lastMessage: string | null;
   policy: string;
   switchMode: string;
   switchesThisHour: number;
+  services: ServiceHealth[];
+  internetOk: boolean | null;
+  nextCheckAt: string | null;
+  history: AutopilotHistoryEntry[];
+  monitoringOnly: boolean;
 }
 
 export interface AutopilotEvent {
@@ -172,13 +209,28 @@ export interface TestTargetResult {
   name: string;
   status: "ok" | "warn" | "fail" | "timeout" | "skipped";
   detail: string;
+  group?: string | null;
+}
+
+export type TestMode = "service" | "standard" | "dpi";
+
+export interface GroupCount {
+  ok: number;
+  total: number;
 }
 
 export type TestEvent =
-  | { kind: "started"; mode: string; configs: string[]; targetsPerConfig: number }
+  | { kind: "started"; mode: string; configs: string[]; services?: string[]; targetsPerConfig: number }
   | { kind: "config-start"; config: string; index: number; total: number }
   | { kind: "target-result"; result: TestTargetResult }
-  | { kind: "config-done"; config: string; ok: number; fail: number; error?: string }
+  | {
+      kind: "config-done";
+      config: string;
+      ok: number;
+      fail: number;
+      error?: string;
+      groups?: Record<string, GroupCount>;
+    }
   | { kind: "finished"; best: string | null; summary: { config: string; ok: number; fail: number }[] }
   | { kind: "cancelled" }
   | { kind: "error"; message: string };

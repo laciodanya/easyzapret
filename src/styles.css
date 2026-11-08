@@ -1,49 +1,104 @@
 @import "tailwindcss";
+@import "@fontsource-variable/onest";
+@import "@fontsource-variable/jetbrains-mono";
 
 @custom-variant dark (&:where(.dark, .dark *));
-@custom-variant purple (&:where(.theme-purple, .theme-purple *));
 
+/*
+ * Design tokens.
+ * One neutral ramp, one accent, three status colours. Everything else in the
+ * app is composed from these, so a theme is just a different set of values.
+ */
 :root {
   color-scheme: light;
-  --accent: 124 92 250;
-  --accent-fg: 255 255 255;
-  --accent-strong: 99 70 230;
-  --surface: 246 244 252;
-  --surface-elevated: 255 255 255;
-  --border: 226 222 240;
-  --muted: 100 100 120;
-  --text: 24 24 36;
-  --text-secondary: 100 100 120;
-  --glow: 124 92 250;
+
+  --app: #eff0f3;
+  --panel: #ffffff;
+  --raised: #f5f6f8;
+  --sunken: #eceef2;
+  --lift: #ffffff;
+  --line: #e0e3e8;
+  --line-strong: #c9ced6;
+
+  --fg: #14171c;
+  --muted: #566070;
+  --faint: #838c9a;
+
+  --accent: #5a49d6;
+  --accent-fg: #ffffff;
+  --accent-text: #4d3cc4;
+  --accent-soft: rgb(90 73 214 / 0.09);
+
+  --ok: #14804f;
+  --ok-soft: rgb(20 128 79 / 0.1);
+  --warn: #a15c07;
+  --warn-soft: rgb(161 92 7 / 0.1);
+  --fail: #c93232;
+  --fail-soft: rgb(201 50 50 / 0.09);
+
+  --scrim: rgb(15 18 24 / 0.45);
+  --shadow-modal: 0 24px 64px -16px rgb(15 18 24 / 0.35), 0 0 0 1px rgb(15 18 24 / 0.06);
 }
 
 .dark {
   color-scheme: dark;
-  --accent: 167 139 250;
-  --accent-fg: 255 255 255;
-  --accent-strong: 139 92 246;
-  --surface: 10 10 16;
-  --surface-elevated: 20 20 28;
-  --border: 48 42 68;
-  --muted: 156 156 172;
-  --text: 240 238 248;
-  --text-secondary: 156 156 172;
-  --glow: 139 92 246;
+
+  --app: #0d0f12;
+  --panel: #14171b;
+  --raised: #1a1e23;
+  --sunken: #0a0b0e;
+  --lift: #242932;
+  --line: #242932;
+  --line-strong: #353c47;
+
+  --fg: #e8eaee;
+  --muted: #98a1ae;
+  --faint: #667080;
+
+  --accent: #6b5bea;
+  --accent-fg: #ffffff;
+  --accent-text: #a89dff;
+  --accent-soft: rgb(138 124 255 / 0.12);
+
+  --ok: #4cc38a;
+  --ok-soft: rgb(76 195 138 / 0.12);
+  --warn: #e0a83a;
+  --warn-soft: rgb(224 168 58 / 0.12);
+  --fail: #f06a6a;
+  --fail-soft: rgb(240 106 106 / 0.12);
+
+  --scrim: rgb(0 0 0 / 0.6);
+  --shadow-modal: 0 24px 64px -16px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.06);
 }
 
-/* Amethyst — deep dark with violet accents */
-.theme-purple {
-  color-scheme: dark;
-  --accent: 167 139 250;
-  --accent-fg: 255 255 255;
-  --accent-strong: 139 92 246;
-  --surface: 12 11 18;
-  --surface-elevated: 22 20 32;
-  --border: 58 48 82;
-  --muted: 161 158 175;
-  --text: 236 232 245;
-  --text-secondary: 161 158 175;
-  --glow: 139 92 246;
+@theme inline {
+  --font-sans: "Onest Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --color-app: var(--app);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+  --color-lift: var(--lift);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-text: var(--accent-text);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-fail: var(--fail);
+  --color-fail-soft: var(--fail-soft);
+
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --radius-modal: 16px;
 }
 
 html,
@@ -54,250 +109,151 @@ body,
 
 body {
   margin: 0;
-  font-family:
-    "Segoe UI Variable Display",
-    "Segoe UI",
-    system-ui,
-    -apple-system,
-    sans-serif;
+  background: var(--app);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  font-feature-settings: "tnum" 1, "cv11" 1;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
   user-select: none;
-  background:
-    radial-gradient(ellipse 90% 60% at 50% -20%, rgb(var(--glow) / 0.12), transparent 55%),
-    rgb(var(--surface));
-  color: rgb(var(--text));
+  cursor: default;
 }
 
-.dark body,
-.theme-purple body {
-  color: rgb(var(--text));
-}
-
-.theme-purple body {
-  background:
-    radial-gradient(ellipse 110% 70% at 50% -28%, rgb(139 92 246 / 0.18), transparent 55%),
-    radial-gradient(ellipse 50% 40% at 100% 100%, rgb(88 48 180 / 0.1), transparent 50%),
-    rgb(var(--surface));
-}
-
-textarea,
+/* Text that people need to copy: addresses, keys, log lines. */
+.selectable,
 input,
-pre,
-code {
+textarea {
   user-select: text;
+  cursor: text;
 }
 
-*::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-*::-webkit-scrollbar-thumb {
-  border-radius: 6px;
-  background: rgb(var(--muted) / 0.35);
-}
-*::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--accent) / 0.45);
-}
-*::-webkit-scrollbar-track {
-  background: transparent;
+button,
+[role="button"],
+[role="switch"],
+select,
+label {
+  cursor: pointer;
 }
 
-.bg-accent {
-  background-color: rgb(var(--accent));
-}
-.bg-accent-soft {
-  background-color: rgb(var(--accent) / 0.12);
-}
-.text-accent {
-  color: rgb(var(--accent));
-}
-.ring-accent {
-  --tw-ring-color: rgb(var(--accent) / 0.35);
-}
-.border-accent-soft {
-  border-color: rgb(var(--accent) / 0.25);
+button:disabled {
+  cursor: default;
 }
 
-/* Amethyst theme: remap hard-coded slate utilities to CSS variables */
-.theme-purple .text-slate-900,
-.theme-purple .text-slate-800,
-.theme-purple .text-slate-700 {
-  color: rgb(var(--text)) !important;
-}
-.theme-purple .text-slate-600,
-.theme-purple .text-slate-500,
-.theme-purple .text-slate-400 {
-  color: rgb(var(--text-secondary)) !important;
-}
-.theme-purple .text-slate-300 {
-  color: rgb(var(--text) / 0.85) !important;
-}
-.theme-purple .dark\:text-white,
-.theme-purple .dark\:text-slate-100,
-.theme-purple .dark\:text-slate-200,
-.theme-purple .dark\:text-slate-300 {
-  color: rgb(var(--text)) !important;
-}
-.theme-purple .dark\:text-slate-400 {
-  color: rgb(var(--text-secondary)) !important;
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.theme-purple .bg-white,
-.theme-purple .dark\:bg-slate-900,
-.theme-purple .dark\:bg-slate-800 {
-  background-color: rgb(var(--surface-elevated)) !important;
-}
-.theme-purple .bg-slate-100,
-.theme-purple .dark\:bg-slate-800\/50 {
-  background-color: rgb(var(--surface)) !important;
-}
-.theme-purple .hover\:bg-slate-50:hover,
-.theme-purple .dark\:hover\:bg-slate-700:hover,
-.theme-purple .dark\:hover\:bg-slate-800:hover {
-  background-color: rgb(var(--accent) / 0.08) !important;
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline-offset: 0;
 }
 
-.theme-purple .ring-slate-200,
-.theme-purple .dark\:ring-slate-700 {
-  --tw-ring-color: rgb(var(--border) / 0.65) !important;
+::selection {
+  background: var(--accent-soft);
+  color: inherit;
 }
 
-.theme-purple aside {
-  background:
-    linear-gradient(180deg, rgb(var(--surface-elevated)) 0%, rgb(var(--surface)) 100%);
-  border-color: rgb(var(--border) / 0.5) !important;
+/* Quiet scrollbars that don't fight the layout. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
 }
 
-.theme-purple .rounded-2xl.bg-\[rgb\(var\(--surface-elevated\)\)\] {
-  box-shadow:
-    0 0 0 1px rgb(var(--border) / 0.4),
-    0 4px 24px rgb(0 0 0 / 0.35);
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
 }
 
-.theme-purple button[role="switch"]:not([aria-checked="true"]) {
-  background-color: rgb(var(--border)) !important;
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
 }
 
-.theme-purple .bg-accent-soft {
-  background-color: rgb(var(--accent) / 0.14);
+::-webkit-scrollbar-thumb:hover {
+  background: var(--faint);
+  background-clip: content-box;
+  border: 3px solid transparent;
 }
 
-.theme-purple .inline-flex.rounded-full.bg-accent-soft {
-  box-shadow: inset 0 0 0 1px rgb(var(--accent) / 0.2);
-}
-
-/* ---- Motion (sparse, intentional) ---- */
-
-@keyframes ez-fade-up {
+/* Motion: only where it explains a state change. */
+@keyframes ez-pop {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(6px) scale(0.985);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
-@keyframes ez-ring-spin {
+@keyframes ez-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ez-spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-@keyframes ez-soft-pulse {
-  0%,
+@keyframes ez-toast {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ez-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
   100% {
-    opacity: 0.45;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.85;
-    transform: scale(1.04);
+    transform: translateX(260%);
   }
 }
 
-@keyframes ez-power-glow {
-  0%,
-  100% {
-    box-shadow:
-      0 0 0 0 rgb(var(--glow) / 0.2),
-      0 18px 50px rgb(var(--glow) / 0.22);
-  }
-  50% {
-    box-shadow:
-      0 0 0 10px rgb(var(--glow) / 0.05),
-      0 22px 60px rgb(var(--glow) / 0.32);
-  }
+.ez-pop {
+  animation: ez-pop 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.ez-fade-up {
-  animation: ez-fade-up 0.45s ease-out both;
+.ez-fade {
+  animation: ez-fade 120ms ease-out;
 }
 
-.ez-fade-up-delay-1 {
-  animation: ez-fade-up 0.45s ease-out 0.06s both;
+.ez-toast {
+  animation: ez-toast 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.ez-fade-up-delay-2 {
-  animation: ez-fade-up 0.45s ease-out 0.12s both;
+.ez-spin {
+  animation: ez-spin 0.8s linear infinite;
 }
 
-.ez-power {
-  position: relative;
-  transition:
-    transform 0.25s ease,
-    background 0.35s ease,
-    box-shadow 0.35s ease,
-    color 0.25s ease;
-}
-
-.ez-power:hover:not(:disabled) {
-  transform: scale(1.03);
-}
-
-.ez-power:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
-.ez-power-on {
-  animation: ez-power-glow 2.8s ease-in-out infinite;
-}
-
-.ez-power-ring {
-  position: absolute;
-  inset: -6px;
-  border-radius: 9999px;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0deg,
-    rgb(var(--accent)) 120deg,
-    transparent 240deg
-  );
-  animation: ez-ring-spin 1.1s linear infinite;
-  opacity: 0.9;
-  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
-  pointer-events: none;
-}
-
-.ez-power-halo {
-  position: absolute;
-  inset: -18px;
-  border-radius: 9999px;
-  background: radial-gradient(circle, rgb(var(--glow) / 0.28), transparent 68%);
-  animation: ez-soft-pulse 2.4s ease-in-out infinite;
-  pointer-events: none;
+.ez-indeterminate {
+  animation: ez-indeterminate 1.3s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ez-fade-up,
-  .ez-fade-up-delay-1,
-  .ez-fade-up-delay-2,
-  .ez-power-on,
-  .ez-power-ring,
-  .ez-power-halo {
-    animation: none !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

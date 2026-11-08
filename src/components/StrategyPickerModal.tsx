@@ -4,7 +4,8 @@ import { api } from "../lib/api";
 import { errText } from "../lib/errors";
 import { toast } from "../lib/toast";
 import { useStore } from "../lib/store";
-import { Modal, Spinner, cn } from "./ui";
+import { Icon } from "./icons";
+import { Empty, Input, Modal, Spinner, cn } from "./ui";
 
 type StrategyGroup = "base" | "alt" | "fakeTls" | "simpleFake";
 
@@ -92,18 +93,22 @@ export function StrategyPickerModal({
   }
 
   return (
-    <Modal open={open} onClose={busy ? undefined : onClose} title={t("home.pickStrategy")} wide>
-      <div className="mb-3">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("strategies.search")}
-          className="w-full rounded-xl border border-[rgb(var(--border)/0.7)] bg-[rgb(var(--surface))] px-3 py-2 text-sm outline-none ring-accent focus:ring-2"
-        />
-      </div>
-      <div className="max-h-[50vh] space-y-4 overflow-y-auto pr-1">
+    <Modal
+      open={open}
+      onClose={busy ? undefined : onClose}
+      title={t("home.pickStrategy")}
+      size="lg"
+    >
+      <Input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={t("strategies.search")}
+        className="mb-4 w-full"
+        autoFocus
+      />
+      <div className="max-h-[52vh] space-y-5 overflow-y-auto pr-1">
         {busy && (
-          <div className="flex items-center justify-center gap-2 py-6 text-[rgb(var(--text-secondary))]">
+          <div className="flex items-center justify-center gap-2 py-6">
             <Spinner />
             <span>{t("common.loading")}</span>
           </div>
@@ -111,10 +116,8 @@ export function StrategyPickerModal({
         {!busy &&
           grouped.map((group) => (
             <div key={group.id}>
-              <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[rgb(var(--text-secondary))]">
-                {groupLabel(group.id)}
-              </div>
-              <div className="space-y-1">
+              <div className="mb-1.5 text-xs font-medium text-faint">{groupLabel(group.id)}</div>
+              <div className="grid grid-cols-2 gap-1">
                 {group.items.map((name) => {
                   const active = name === selected;
                   return (
@@ -122,25 +125,23 @@ export function StrategyPickerModal({
                       key={name}
                       type="button"
                       disabled={busy}
-                      onClick={() => pick(name)}
+                      onClick={() => void pick(name)}
                       className={cn(
-                        "flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition-colors",
+                        "flex h-9 items-center justify-between gap-2 rounded-control px-3 text-left text-[13px] transition-colors",
                         active
-                          ? "bg-accent-soft text-accent ring-1 ring-[rgb(var(--accent)/0.25)]"
-                          : "hover:bg-[rgb(var(--accent)/0.08)]",
+                          ? "bg-accent-soft font-medium text-accent-text"
+                          : "text-fg hover:bg-raised",
                       )}
                     >
-                      <span className="truncate font-medium">{prettyName(name)}</span>
-                      {active && <span className="text-xs font-semibold">{t("strategies.current")}</span>}
+                      <span className="truncate">{prettyName(name)}</span>
+                      {active && <Icon name="check" size={15} strokeWidth={2.25} />}
                     </button>
                   );
                 })}
               </div>
             </div>
           ))}
-        {!busy && grouped.length === 0 && (
-          <div className="py-8 text-center text-sm text-[rgb(var(--text-secondary))]">{t("strategies.empty")}</div>
-        )}
+        {!busy && grouped.length === 0 && <Empty>{t("strategies.empty")}</Empty>}
       </div>
     </Modal>
   );

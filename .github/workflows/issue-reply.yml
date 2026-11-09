@@ -1,0 +1,51 @@
+name: Reply to new issues
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              "Нужны детали, иначе issue почти бесполезен.",
+              "",
+              "**Окружение**",
+              "- Версия EasyZapret",
+              "- Windows 10 / 11, сборка если знаете",
+              "- Антивирус / Defender / Kaspersky / другой",
+              "",
+              "**Что не работает**",
+              "- Discord / YouTube / Telegram / WARP / автопилот / обновление / установка / другое",
+              "- Когда началось: после обновления EasyZapret, после смены стратегии, после перезагрузки, само",
+              "- Это всегда или иногда",
+              "- Без EasyZapret сайт/приложение открывается или тоже нет",
+              "",
+              "**Что уже проверено**",
+              "- Какая стратегия сейчас выбрана",
+              "- Пробовали ли другую стратегию / автопилот / тесты стратегий",
+              "- Включён ли WARP, какой режим",
+              "- Включён ли Telegram Proxy",
+              "- Есть ли рядом ExitLag, GearUP, другой VPN / «обход»",
+              "- Чистили ли кэш Discord, если проблема в Discord",
+              "",
+              "**Логи**",
+              "Логи → Отчёт для GitHub → скопировать и вставить сюда целиком.",
+              "",
+              "**Если баг**",
+              "Что нажали → что ожидали → что получили. Скриншот ошибки, если есть.",
+            ].join("\n");
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

@@ -10,14 +10,14 @@
 
 <p align="center">
   <a href="https://github.com/laciodanya/easyzapret/releases/latest">
-    <img src="https://img.shields.io/badge/Скачать_для_Windows-5B4BE0?style=for-the-badge&logo=windows&logoColor=white" alt="Скачать для Windows">
+    <img src="https://img.shields.io/badge/%D0%A1%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C_%D0%B4%D0%BB%D1%8F_Windows-5B4BE0?style=for-the-badge&logo=windows&logoColor=white" alt="Скачать для Windows">
   </a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/laciodanya/easyzapret/releases/latest"><img src="https://img.shields.io/github/v/release/laciodanya/easyzapret?label=версия&color=5B4BE0" alt="Версия"></a>
-  <a href="https://github.com/laciodanya/easyzapret/releases"><img src="https://img.shields.io/github/downloads/laciodanya/easyzapret/total?label=скачиваний&color=5B4BE0" alt="Скачиваний"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/laciodanya/easyzapret?color=5B4BE0" alt="Лицензия"></a>
+  <a href="https://github.com/laciodanya/easyzapret/releases/latest"><img src="https://img.shields.io/github/v/release/laciodanya/easyzapret?label=%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F&color=5B4BE0" alt="Версия"></a>
+  <a href="https://github.com/laciodanya/easyzapret/releases"><img src="https://img.shields.io/github/downloads/laciodanya/easyzapret/total?label=%D1%81%D0%BA%D0%B0%D1%87%D0%B8%D0%B2%D0%B0%D0%BD%D0%B8%D0%B9&color=5B4BE0" alt="Скачиваний"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-MIT-5B4BE0" alt="Лицензия MIT"></a>
 </p>
 
 <p align="center">

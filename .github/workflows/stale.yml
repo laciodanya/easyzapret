@@ -1,0 +1,32 @@
+name: Close inactive issues
+
+on:
+  schedule:
+    # Once a day. Exact minute is jittered by GitHub.
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          days-before-issue-stale: 21
+          days-before-issue-close: 7
+          # Don't touch pull requests.
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          stale-issue-label: stale
+          exempt-issue-labels: pinned,security
+          stale-issue-message: |
+            Этот issue давно без активности. Через 7 дней он будет закрыт автоматически.
+
+            Напишите комментарий или уберите метку `stale`, если тема ещё актуальна.
+          close-issue-message: |
+            Закрыто из‑за отсутствия активности. Можно открыть снова или создать новый issue, если проблема осталась.
+          close-issue-reason: not_planned

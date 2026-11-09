@@ -5,8 +5,7 @@
 <h1 align="center">EasyZapret</h1>
 
 <p align="center">
-  Zapret, Telegram Proxy и Cloudflare WARP в одном окне.<br>
-  Без консоли и ручной возни с <code>.bat</code>-файлами.
+  Zapret, Telegram Proxy и Cloudflare WARP в одном окне<br>
 </p>
 
 <p align="center">

@@ -115,4 +115,6 @@ npm run tauri build
 - Flowseal за сборку zapret-discord-youtube и tg-ws-proxy;
 - [hyperion-cs/dpi-checkers](https://github.com/hyperion-cs/dpi-checkers) за набор DPI-чекеров.
 
+Лицензии сторонних компонентов описаны в [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 EasyZapret это независимый пользовательский проект. Пользуйтесь на свой риск и соблюдайте законы своей страны.

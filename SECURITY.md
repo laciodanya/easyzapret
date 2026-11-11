@@ -22,9 +22,8 @@ Only the **latest published release** on [Releases](https://github.com/laciodany
 
 | Version | Supported |
 | ------- | --------- |
-| Latest 0.5.x release | Yes |
-| Older 0.5.x builds | No — update to the latest installer |
-| < 0.5.0 | No |
+| Latest 0.6.x release | Yes |
+| Older builds | No, update to the latest installer |
 
 Older builds may not verify updater signatures against the current key. If in-app update fails, install the latest `.exe` from Releases.
 
@@ -50,17 +49,16 @@ Do **not** use this channel for:
 
 ## How to report
 
-Use GitHub’s private reporting:
+Use GitHub's private vulnerability reporting:
 
 **Security → Report a vulnerability** on this repository.
 
-If that form is unavailable, open a **private** GitHub Security advisory, or contact the maintainer via the GitHub profile. Do not post exploit details, payloads, or proof-of-concept in public Issues or Discussions.
+If the form is unavailable, contact the maintainer through the GitHub profile and ask for a private channel. Do not post exploit details, payloads or proof-of-concept in public Issues or Discussions.
 
 Include:
 
 - EasyZapret version (Settings → About)
 - Windows version
-- whether the app was running as Administrator
 - steps to reproduce
 - what you expected vs what happened
 
@@ -81,6 +79,6 @@ Credit in the release notes is optional and only if you want it.
 
 - Install only from [github.com/laciodanya/easyzapret/releases](https://github.com/laciodanya/easyzapret/releases).
 - The NSIS installer is not signed with a commercial Authenticode certificate, so SmartScreen may warn. That is expected; it is not a vulnerability by itself.
-- In-app updates are signed with Tauri’s updater key. A signature mismatch means the build does not match the key baked into your installed app — do not ignore that; install the latest official installer instead.
+- In-app updates are signed with Tauri’s updater key. A signature mismatch means the build does not match the key baked into your installed app. Do not ignore it: install the latest official installer instead.
 - EasyZapret requires Administrator rights because zapret/WinDivert need them. That is a design requirement, not a bug.
 - Use at your own risk and follow the laws of your country. This project is a UI around existing tools, not a security product and not an exploit kit.

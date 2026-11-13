@@ -142,8 +142,7 @@ pub fn force_remove_dir(path: &std::path::Path) -> Result<(), String> {
         if !path.exists() {
             return Ok(());
         }
-        std::fs::remove_dir_all(path)
-            .map_err(|e| format!("{e}; powershell: {}", out.trim()))
+        std::fs::remove_dir_all(path).map_err(|e| format!("{e}; powershell: {}", out.trim()))
     }
     #[cfg(not(windows))]
     {

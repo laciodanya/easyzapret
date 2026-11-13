@@ -89,7 +89,9 @@ fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
 }
 
 pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
-    let lang = crate::settings::load().language.unwrap_or_else(|| "ru".into());
+    let lang = crate::settings::load()
+        .language
+        .unwrap_or_else(|| "ru".into());
     let l = labels(&lang);
 
     let open_item = MenuItem::with_id(app, "open", l.open, true, None::<&str>)?;
@@ -102,7 +104,15 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 
     let menu = Menu::with_items(
         app,
-        &[&open_item, &sep, &zapret_item, &tg_item, &warp_item, &sep2, &quit_item],
+        &[
+            &open_item,
+            &sep,
+            &zapret_item,
+            &tg_item,
+            &warp_item,
+            &sep2,
+            &quit_item,
+        ],
     )?;
 
     let tray = TrayIconBuilder::with_id("main-tray")
@@ -115,7 +125,10 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
             "quit" => {
                 // Full exit: stop processes we manage; an installed service
                 // is intentionally left running (it is autonomous).
-                crate::logs::append("app", "quit requested from tray — stopping managed processes");
+                crate::logs::append(
+                    "app",
+                    "quit requested from tray — stopping managed processes",
+                );
                 let state = app.state::<AppState>();
                 crate::warp::disconnect_quiet();
                 crate::zapret::process::stop(&state);
@@ -125,16 +138,19 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
             "toggle_zapret" => {
                 crate::logs::append("app", "tray: toggle Zapret");
                 let state = app.state::<AppState>();
-                if crate::zapret::process::winws_running() {
+                let service_state = crate::zapret::service::query_service_state("zapret");
+                if service_state.as_deref() == Some("RUNNING") {
+                    let _ = crate::zapret::service::stop_installed_service(&state);
+                } else if crate::zapret::process::winws_running() {
                     crate::zapret::process::stop(&state);
+                } else if service_state.is_some() {
+                    let _ = crate::zapret::service::start_installed_service();
                 } else {
-                    let strategy = crate::settings::load()
-                        .selected_strategy
-                        .or_else(|| {
-                            crate::zapret::strategy::list_strategies()
-                                .ok()
-                                .and_then(|v| v.first().cloned())
-                        });
+                    let strategy = crate::settings::load().selected_strategy.or_else(|| {
+                        crate::zapret::strategy::list_strategies()
+                            .ok()
+                            .and_then(|v| v.first().cloned())
+                    });
                     if let Some(bat) = strategy {
                         let _ = crate::zapret::process::start_strategy(&state, &bat);
                     }
@@ -164,14 +180,23 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event {
+            if let TrayIconEvent::Click {
+                button: tauri::tray::MouseButton::Left,
+                ..
+            } = event
+            {
                 show_main_window(tray.app_handle());
             }
         })
         .build(app)?;
 
     let state = app.state::<AppState>();
-    *state.tray.lock().unwrap() = Some(TrayHandles { tray, zapret_item, tg_item, warp_item });
+    *state.tray.lock().unwrap() = Some(TrayHandles {
+        tray,
+        zapret_item,
+        tg_item,
+        warp_item,
+    });
     update_tray_now(app);
     Ok(())
 }
@@ -183,7 +208,9 @@ pub fn update_tray_now(app: &AppHandle) {
     let tg_on = crate::tg_proxy::proxy_running();
     let warp_on = crate::warp::quick_status().connected;
 
-    let lang = crate::settings::load().language.unwrap_or_else(|| "ru".into());
+    let lang = crate::settings::load()
+        .language
+        .unwrap_or_else(|| "ru".into());
     let l = labels(&lang);
 
     let state = app.state::<AppState>();
@@ -204,8 +231,14 @@ pub fn update_tray_now(app: &AppHandle) {
             on(warp_on),
         );
         let _ = handles.tray.set_tooltip(Some(&tooltip));
-        let _ = handles.zapret_item.set_text(if zapret_on { l.zapret_on } else { l.zapret_off });
-        let _ = handles.tg_item.set_text(if tg_on { l.tg_on } else { l.tg_off });
-        let _ = handles.warp_item.set_text(if warp_on { l.warp_on } else { l.warp_off });
+        let _ = handles
+            .zapret_item
+            .set_text(if zapret_on { l.zapret_on } else { l.zapret_off });
+        let _ = handles
+            .tg_item
+            .set_text(if tg_on { l.tg_on } else { l.tg_off });
+        let _ = handles
+            .warp_item
+            .set_text(if warp_on { l.warp_on } else { l.warp_off });
     }
 }

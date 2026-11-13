@@ -46,7 +46,9 @@ fn log_file(name: &str) -> Result<PathBuf, String> {
 }
 
 fn rotate_if_needed(path: &PathBuf) {
-    let too_big = std::fs::metadata(path).map(|m| m.len() > ROTATE_BYTES).unwrap_or(false);
+    let too_big = std::fs::metadata(path)
+        .map(|m| m.len() > ROTATE_BYTES)
+        .unwrap_or(false);
     if too_big {
         let old = path.with_extension("old.log");
         let _ = std::fs::remove_file(&old);
@@ -60,7 +62,11 @@ fn write_line(name: &str, line: &str) {
     };
     let _ = std::fs::create_dir_all(paths::logs_dir());
     rotate_if_needed(&path);
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
         let _ = writeln!(f, "{line}");
     }
 }
@@ -92,7 +98,11 @@ fn windows_version() -> String {
     #[cfg(windows)]
     {
         let (_, out) = crate::util::run_capture("cmd", &["/C", "ver"]);
-        let text = out.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+        let text = out
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+            .unwrap_or("");
         if !text.is_empty() {
             return text.to_string();
         }
@@ -105,7 +115,10 @@ fn windows_version() -> String {
 pub fn session_start(app_version: &str) {
     let version = app_version.to_string();
     std::thread::spawn(move || {
-        append("app", "==================== EasyZapret session ====================");
+        append(
+            "app",
+            "==================== EasyZapret session ====================",
+        );
         append(
             "app",
             &format!(
@@ -150,7 +163,8 @@ pub fn read_log(name: String, max_lines: usize) -> Result<String, String> {
     let text = if meta.len() > MAX_READ_BYTES {
         use std::io::{Read, Seek, SeekFrom};
         let mut f = std::fs::File::open(&path).map_err(|e| e.to_string())?;
-        f.seek(SeekFrom::End(-(MAX_READ_BYTES as i64))).map_err(|e| e.to_string())?;
+        f.seek(SeekFrom::End(-(MAX_READ_BYTES as i64)))
+            .map_err(|e| e.to_string())?;
         let mut buf = Vec::new();
         f.read_to_end(&mut buf).map_err(|e| e.to_string())?;
         String::from_utf8_lossy(&buf).to_string()
@@ -231,7 +245,10 @@ pub fn build_report(app: &AppHandle, lines_per_log: usize) -> String {
     report.push_str(&format!("- System: {}\n", windows_version()));
     report.push_str(&format!("- Architecture: {}\n", std::env::consts::ARCH));
     report.push_str(&format!("- Administrator: {}\n", crate::admin::is_admin()));
-    report.push_str(&format!("- Language: {}\n", settings.language.as_deref().unwrap_or("auto")));
+    report.push_str(&format!(
+        "- Language: {}\n",
+        settings.language.as_deref().unwrap_or("auto")
+    ));
     report.push_str(&format!("- Theme: {}\n\n", settings.theme));
 
     report.push_str("## Components\n\n");
@@ -240,7 +257,10 @@ pub fn build_report(app: &AppHandle, lines_per_log: usize) -> String {
         components.zapret_version.as_deref().unwrap_or("-"),
         components.zapret_installed
     ));
-    report.push_str(&format!("- Selected strategy: {}\n", settings.selected_strategy.as_deref().unwrap_or("-")));
+    report.push_str(&format!(
+        "- Selected strategy: {}\n",
+        settings.selected_strategy.as_deref().unwrap_or("-")
+    ));
     report.push_str(&format!(
         "- winws running: {} · service: {} · WinDivert: {}\n",
         crate::zapret::process::winws_running(),
@@ -279,7 +299,9 @@ pub fn build_report(app: &AppHandle, lines_per_log: usize) -> String {
         ("tests", "Tests"),
     ] {
         let tail = tail_of(name, lines_per_log);
-        report.push_str(&format!("## {title} log (last {lines_per_log} lines)\n\n```\n"));
+        report.push_str(&format!(
+            "## {title} log (last {lines_per_log} lines)\n\n```\n"
+        ));
         if tail.trim().is_empty() {
             report.push_str("(empty)\n");
         } else {
@@ -303,7 +325,10 @@ pub fn get_log_report(app: AppHandle, lines_per_log: usize) -> String {
 #[tauri::command]
 pub fn save_log_report(app: AppHandle) -> Result<String, String> {
     let report = build_report(&app, 400);
-    let name = format!("easyzapret-report-{}.md", chrono::Local::now().format("%Y%m%d-%H%M%S"));
+    let name = format!(
+        "easyzapret-report-{}.md",
+        chrono::Local::now().format("%Y%m%d-%H%M%S")
+    );
     let path = paths::logs_dir().join(name);
     std::fs::create_dir_all(paths::logs_dir()).map_err(|e| e.to_string())?;
     std::fs::write(&path, report).map_err(|e| e.to_string())?;

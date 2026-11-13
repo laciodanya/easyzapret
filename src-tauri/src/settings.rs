@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
+use std::path::Path;
+use std::sync::Mutex;
 
 use crate::paths;
+
+static SETTINGS_IO: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -124,13 +128,28 @@ impl Default for Settings {
     }
 }
 
-pub fn load() -> Settings {
-    let mut s = std::fs::read_to_string(paths::settings_file())
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
+fn backup_file() -> std::path::PathBuf {
+    paths::data_dir().join("config.json.bak")
+}
+
+fn parse_settings(path: &Path) -> Option<Settings> {
+    let text = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+fn load_unlocked() -> Settings {
+    let mut s = parse_settings(&paths::settings_file())
+        .or_else(|| parse_settings(&backup_file()))
         .unwrap_or_default();
     normalize_theme(&mut s);
     s
+}
+
+pub fn load() -> Settings {
+    let _guard = SETTINGS_IO
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    load_unlocked()
 }
 
 fn normalize_theme(s: &mut Settings) {
@@ -139,10 +158,79 @@ fn normalize_theme(s: &mut Settings) {
     }
 }
 
-pub fn save(settings: &Settings) -> Result<(), String> {
+#[cfg(windows)]
+fn replace_file(source: &Path, destination: &Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+
+    let source_wide: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
+    let destination_wide: Vec<u16> = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let ok = unsafe {
+        MoveFileExW(
+            source_wide.as_ptr(),
+            destination_wide.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if ok == 0 {
+        Err(std::io::Error::last_os_error().to_string())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+fn replace_file(source: &Path, destination: &Path) -> Result<(), String> {
+    std::fs::rename(source, destination).map_err(|e| e.to_string())
+}
+
+fn save_unlocked(settings: &Settings) -> Result<(), String> {
     paths::ensure_dirs().map_err(|e| e.to_string())?;
     let text = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
-    std::fs::write(paths::settings_file(), text).map_err(|e| e.to_string())
+    let destination = paths::settings_file();
+    let temporary = paths::data_dir().join(format!(
+        ".config.json.{}.{}.tmp",
+        std::process::id(),
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    ));
+
+    let result = (|| {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|e| e.to_string())?;
+        file.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?;
+
+        if destination.is_file() {
+            std::fs::copy(&destination, backup_file()).map_err(|e| e.to_string())?;
+        }
+        replace_file(&temporary, &destination)
+    })();
+
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    result
+}
+
+/// Performs a read-modify-write transaction under one process-wide lock.
+pub fn update(mutator: impl FnOnce(&mut Settings)) -> Result<Settings, String> {
+    let _guard = SETTINGS_IO
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut settings = load_unlocked();
+    mutator(&mut settings);
+    save_unlocked(&settings)?;
+    Ok(settings)
 }
 
 #[tauri::command]
@@ -151,12 +239,21 @@ pub fn get_settings() -> Settings {
 }
 
 /// Collects `path: old -> new` lines for every leaf that differs.
-fn diff_json(prefix: &str, old: &serde_json::Value, new: &serde_json::Value, out: &mut Vec<String>) {
+fn diff_json(
+    prefix: &str,
+    old: &serde_json::Value,
+    new: &serde_json::Value,
+    out: &mut Vec<String>,
+) {
     use serde_json::Value;
     match (old, new) {
         (Value::Object(a), Value::Object(b)) => {
             for (key, nv) in b {
-                let path = if prefix.is_empty() { key.clone() } else { format!("{prefix}.{key}") };
+                let path = if prefix.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{prefix}.{key}")
+                };
                 diff_json(&path, a.get(key).unwrap_or(&Value::Null), nv, out);
             }
         }
@@ -165,15 +262,109 @@ fn diff_json(prefix: &str, old: &serde_json::Value, new: &serde_json::Value, out
     }
 }
 
+fn validate_patch_shape(
+    prefix: &str,
+    current: &serde_json::Value,
+    patch: &serde_json::Value,
+) -> Result<(), String> {
+    let serde_json::Value::Object(patch_object) = patch else {
+        return Ok(());
+    };
+    let serde_json::Value::Object(current_object) = current else {
+        return Err(format!("settings field '{prefix}' is not an object"));
+    };
+    for (key, value) in patch_object {
+        let path = if prefix.is_empty() {
+            key.clone()
+        } else {
+            format!("{prefix}.{key}")
+        };
+        let Some(current_value) = current_object.get(key) else {
+            return Err(format!("unknown settings field: {path}"));
+        };
+        validate_patch_shape(&path, current_value, value)?;
+    }
+    Ok(())
+}
+
+fn merge_json(target: &mut serde_json::Value, patch: serde_json::Value) {
+    match (target, patch) {
+        (serde_json::Value::Object(target), serde_json::Value::Object(patch)) => {
+            for (key, value) in patch {
+                if let Some(current) = target.get_mut(&key) {
+                    merge_json(current, value);
+                }
+            }
+        }
+        (target, value) => *target = value,
+    }
+}
+
+/// Applies only the fields sent by the UI to the latest settings snapshot.
+/// This prevents a stale frontend copy from overwriting changes made by the
+/// autopilot or updater between rendering and clicking a toggle.
 #[tauri::command]
-pub fn save_settings(settings: Settings) -> Result<(), String> {
-    let before = serde_json::to_value(load()).unwrap_or_default();
-    let after = serde_json::to_value(&settings).unwrap_or_default();
+pub fn patch_settings(patch: serde_json::Value) -> Result<Settings, String> {
+    let _guard = SETTINGS_IO
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let current = load_unlocked();
+    let before = serde_json::to_value(&current).map_err(|e| e.to_string())?;
+    let patch_object = patch
+        .as_object()
+        .ok_or_else(|| "settings patch must be an object".to_string())?;
+    for protected in ["zapretVersion", "tgVersion"] {
+        if patch_object.contains_key(protected) {
+            return Err(format!(
+                "settings field '{protected}' is managed by the updater"
+            ));
+        }
+    }
+    validate_patch_shape("", &before, &patch)?;
+
+    let mut merged = before.clone();
+    merge_json(&mut merged, patch);
+    let mut next: Settings = serde_json::from_value(merged).map_err(|e| e.to_string())?;
+    normalize_theme(&mut next);
+    if next.autostart.auto_start_warp {
+        next.autostart.auto_start_zapret = true;
+    }
+    let after = serde_json::to_value(&next).map_err(|e| e.to_string())?;
     let mut changes = Vec::new();
     diff_json("", &before, &after, &mut changes);
-    save(&settings)?;
+    save_unlocked(&next)?;
     if !changes.is_empty() {
         crate::logs::append("app", &format!("settings changed: {}", changes.join("; ")));
     }
-    Ok(())
+    Ok(next)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn settings_patch_preserves_unmentioned_nested_fields() {
+        let mut current = json!({
+            "selectedStrategy": "general.bat",
+            "autopilot": { "enabled": false, "maxSwitchesPerHour": 3 }
+        });
+        let patch = json!({ "autopilot": { "enabled": true } });
+        validate_patch_shape("", &current, &patch).unwrap();
+        merge_json(&mut current, patch);
+        assert_eq!(current["selectedStrategy"], "general.bat");
+        assert_eq!(current["autopilot"]["enabled"], true);
+        assert_eq!(current["autopilot"]["maxSwitchesPerHour"], 3);
+    }
+
+    #[test]
+    fn settings_patch_rejects_unknown_fields() {
+        let current = json!({ "autopilot": { "enabled": false } });
+        let patch = json!({ "autopilot": { "typo": true } });
+        assert_eq!(
+            validate_patch_shape("", &current, &patch).unwrap_err(),
+            "unknown settings field: autopilot.typo"
+        );
+    }
 }

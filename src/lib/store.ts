@@ -4,7 +4,7 @@ import { api } from "./api";
 import i18n, { systemLanguage } from "../i18n";
 import { toast } from "./toast";
 import { getStatus } from "./status";
-import type { TFunction } from "i18next";
+import { createSerialQueue } from "./serialQueue";
 import type {
   AppInfo,
   AppUpdateStatus,
@@ -32,6 +32,11 @@ export type ZapretTab = "service" | "tests" | "lists";
 const THEME_KEY = "easyzapret-theme";
 /** Services shown on the home screen and re-checked on demand. */
 export const HOME_SERVICES = ["discord", "youtube", "telegram", "cloudflare"] as const;
+
+// Settings are sent as a full snapshot. Serialize writes so two quick toggles
+// cannot arrive at the backend out of order and silently restore an older one.
+const enqueueSettingsWrite = createSerialQueue();
+let settingsRevision = 0;
 
 interface AppStore {
   page: Page;
@@ -230,31 +235,55 @@ export const useStore = create<AppStore>((set, get) => ({
   updateSettings: async (patch) => {
     const current = get().settings;
     if (!current) return;
+    const revision = ++settingsRevision;
     const settings = mergeSettings({ ...current, ...patch });
     set({ settings });
-    await api.saveSettings(settings);
-    if (patch.theme) applyTheme(patch.theme);
-    if (patch.language !== undefined) {
-      await i18n.changeLanguage(patch.language ?? systemLanguage());
-      api.refreshTray().catch(() => {});
+    try {
+      const saved = await enqueueSettingsWrite(() => api.patchSettings(patch));
+      if (revision === settingsRevision) set({ settings: mergeSettings(saved) });
+      if (patch.theme) applyTheme(patch.theme);
+      if (patch.language !== undefined) {
+        await i18n.changeLanguage(patch.language ?? systemLanguage());
+        api.refreshTray().catch(() => {});
+      }
+    } catch (e) {
+      if (revision === settingsRevision) set({ settings: current });
+      throw e;
     }
   },
 
   updateAutostart: async (patch) => {
     const current = get().settings;
     if (!current) return;
+    const revision = ++settingsRevision;
     const previous = current.autostart;
     const next = { ...current.autostart, ...patch };
     if (next.autoStartWarp) next.autoStartZapret = true;
     const settings = mergeSettings({ ...current, autostart: next });
     set({ settings });
     try {
-      if (patch.launchAtLogin !== undefined) {
-        await api.setLaunchAtLogin(patch.launchAtLogin);
-      }
-      await api.saveSettings(settings);
+      const saved = await enqueueSettingsWrite(async () => {
+        let launchChanged = false;
+        if (patch.launchAtLogin !== undefined) {
+          await api.setLaunchAtLogin(patch.launchAtLogin);
+          launchChanged = true;
+        }
+        const hasOtherChanges = Object.keys(patch).some((key) => key !== "launchAtLogin");
+        if (!hasOtherChanges) return null;
+        try {
+          return await api.patchSettings({ autostart: patch });
+        } catch (error) {
+          if (launchChanged) {
+            await api.setLaunchAtLogin(previous.launchAtLogin).catch(() => {});
+          }
+          throw error;
+        }
+      });
+      if (saved && revision === settingsRevision) set({ settings: mergeSettings(saved) });
     } catch (e) {
-      set({ settings: { ...current, autostart: previous } });
+      if (revision === settingsRevision) {
+        set({ settings: { ...current, autostart: previous } });
+      }
       throw e;
     }
   },
@@ -308,25 +337,39 @@ export const useStore = create<AppStore>((set, get) => ({
 }));
 
 /** Autopilot toast notifications — wired once at app mount. */
-export function setupAutopilotListener(t: TFunction) {
+export function setupAutopilotListener() {
   let unlisten: UnlistenFn | null = null;
   const bare = (name: string) => name.replace(/\.bat$/i, "");
   listen<AutopilotEvent>("autopilot-event", (e) => {
     const ev = e.payload;
     switch (ev.kind) {
+      case "strategy_changed":
+        if (ev.toStrategy) {
+          useStore.setState((state) => ({
+            settings: state.settings
+              ? { ...state.settings, selectedStrategy: ev.toStrategy }
+              : state.settings,
+          }));
+        }
+        break;
       case "strategy_switched":
         if (ev.fromStrategy && ev.toStrategy) {
+          useStore.setState((state) => ({
+            settings: state.settings
+              ? { ...state.settings, selectedStrategy: ev.toStrategy }
+              : state.settings,
+          }));
           toast(
-            t("autopilot.toastSwitch", { from: bare(ev.fromStrategy), to: bare(ev.toStrategy) }),
+            i18n.t("autopilot.toastSwitch", { from: bare(ev.fromStrategy), to: bare(ev.toStrategy) }),
             "info",
           );
         }
         break;
       case "health_degraded":
-        toast(t("autopilot.toastDegraded", { percent: ev.healthPercent ?? 0 }), "fail");
+        toast(i18n.t("autopilot.toastDegraded", { percent: ev.healthPercent ?? 0 }), "fail");
         break;
       case "no_fix":
-        toast(t("autopilot.toastNoFix"), "fail");
+        toast(i18n.t("autopilot.toastNoFix"), "fail");
         break;
       default:
         break;

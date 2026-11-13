@@ -39,11 +39,31 @@ pub fn game_filter() -> GameFilter {
         .unwrap_or_default();
 
     match mode.as_str() {
-        "all" => GameFilter { mode: "all".into(), tcp: "1024-65535".into(), udp: "1024-65535".into() },
-        "tcp" => GameFilter { mode: "tcp".into(), tcp: "1024-65535".into(), udp: "12".into() },
-        "udp" => GameFilter { mode: "udp".into(), tcp: "12".into(), udp: "1024-65535".into() },
-        _ if flag.exists() => GameFilter { mode: "udp".into(), tcp: "12".into(), udp: "1024-65535".into() },
-        _ => GameFilter { mode: "off".into(), tcp: "12".into(), udp: "12".into() },
+        "all" => GameFilter {
+            mode: "all".into(),
+            tcp: "1024-65535".into(),
+            udp: "1024-65535".into(),
+        },
+        "tcp" => GameFilter {
+            mode: "tcp".into(),
+            tcp: "1024-65535".into(),
+            udp: "12".into(),
+        },
+        "udp" => GameFilter {
+            mode: "udp".into(),
+            tcp: "12".into(),
+            udp: "1024-65535".into(),
+        },
+        _ if flag.exists() => GameFilter {
+            mode: "udp".into(),
+            tcp: "12".into(),
+            udp: "1024-65535".into(),
+        },
+        _ => GameFilter {
+            mode: "off".into(),
+            tcp: "12".into(),
+            udp: "12".into(),
+        },
     }
 }
 
@@ -163,7 +183,10 @@ fn parse_winws_args(
                 .replace("%~dp0", root)
                 .replace("%GameFilterTCP%", &gf.tcp)
                 .replace("%GameFilterUDP%", &gf.udp)
-                .replace("%GameFilter%", if gf.mode == "off" { "12" } else { "1024-65535" })
+                .replace(
+                    "%GameFilter%",
+                    if gf.mode == "off" { "12" } else { "1024-65535" },
+                )
         })
         .collect();
 
@@ -196,6 +219,26 @@ fn tokenize(input: &str) -> Vec<String> {
     tokens
 }
 
+/// Rebuilds the argument string used for `sc create ... binPath=`, with
+/// path-like values wrapped in escaped quotes — same format service.bat uses.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn service_args_string(args: &[String]) -> String {
+    args.iter()
+        .map(|arg| {
+            if let Some(eq) = arg.find('=') {
+                let (key, value) = arg.split_at(eq + 1);
+                if value.contains('\\') || value.contains(' ') {
+                    return format!("{key}\"{value}\"");
+                }
+            } else if arg.contains(' ') {
+                return format!("\"{arg}\"");
+            }
+            arg.clone()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,7 +248,11 @@ mod tests {
 
     #[test]
     fn parses_general_bat() {
-        let gf = GameFilter { mode: "off".into(), tcp: "12".into(), udp: "12".into() };
+        let gf = GameFilter {
+            mode: "off".into(),
+            tcp: "12".into(),
+            udp: "12".into(),
+        };
         let args = parse_winws_args(
             GENERAL_BAT,
             "C:\\EasyZapret\\zapret\\bin\\",
@@ -217,8 +264,12 @@ mod tests {
 
         assert_eq!(args[0], "--wf-tcp=80,443,12");
         assert_eq!(args[1], "--wf-udp=443,12");
-        assert!(args.contains(&"--hostlist=C:\\EasyZapret\\zapret\\lists\\list-general.txt".to_string()));
-        assert!(args.contains(&"--dpi-desync-fake-quic=C:\\EasyZapret\\zapret\\bin\\quic_initial_www_google_com.bin".to_string()));
+        assert!(args
+            .contains(&"--hostlist=C:\\EasyZapret\\zapret\\lists\\list-general.txt".to_string()));
+        assert!(args.contains(
+            &"--dpi-desync-fake-quic=C:\\EasyZapret\\zapret\\bin\\quic_initial_www_google_com.bin"
+                .to_string()
+        ));
         // caret continuation tokens must not leak into args
         assert!(!args.iter().any(|a| a == "^"));
         // both --new sections are preserved
@@ -228,7 +279,11 @@ mod tests {
 
     #[test]
     fn game_filter_substitution() {
-        let gf = GameFilter { mode: "all".into(), tcp: "1024-65535".into(), udp: "1024-65535".into() };
+        let gf = GameFilter {
+            mode: "all".into(),
+            tcp: "1024-65535".into(),
+            udp: "1024-65535".into(),
+        };
         let args = parse_winws_args(GENERAL_BAT, "B\\", "L\\", "R\\", &gf).unwrap();
         assert_eq!(args[0], "--wf-tcp=80,443,1024-65535");
         assert_eq!(args[1], "--wf-udp=443,1024-65535");
@@ -248,7 +303,7 @@ mod tests {
 
     #[test]
     fn natural_sort_pads_digits() {
-        let mut names = vec![
+        let mut names = [
             "general (ALT10).bat".to_string(),
             "general (ALT2).bat".to_string(),
             "general (ALT).bat".to_string(),
@@ -259,24 +314,4 @@ mod tests {
         assert_eq!(names[1], "general (ALT2).bat");
         assert_eq!(names[2], "general (ALT10).bat");
     }
-}
-
-/// Rebuilds the argument string used for `sc create ... binPath=`, with
-/// path-like values wrapped in escaped quotes — same format service.bat uses.
-#[cfg_attr(not(windows), allow(dead_code))]
-pub fn service_args_string(args: &[String]) -> String {
-    args.iter()
-        .map(|arg| {
-            if let Some(eq) = arg.find('=') {
-                let (key, value) = arg.split_at(eq + 1);
-                if value.contains('\\') || value.contains(' ') {
-                    return format!("{key}\"{value}\"");
-                }
-            } else if arg.contains(' ') {
-                return format!("\"{arg}\"");
-            }
-            arg.clone()
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
 }

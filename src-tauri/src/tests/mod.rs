@@ -15,11 +15,19 @@ const DPI_RANGE_BYTES: usize = 65536;
 const DPI_SUITE_URL: &str = "https://hyperion-cs.github.io/dpi-checkers/ru/tcp-16-20/suite.v2.json";
 
 fn curl_bin() -> &'static str {
-    if cfg!(windows) { "curl.exe" } else { "curl" }
+    if cfg!(windows) {
+        "curl.exe"
+    } else {
+        "curl"
+    }
 }
 
 fn devnull() -> &'static str {
-    if cfg!(windows) { "NUL" } else { "/dev/null" }
+    if cfg!(windows) {
+        "NUL"
+    } else {
+        "/dev/null"
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -39,7 +47,9 @@ fn load_targets() -> Vec<StandardTarget> {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            let Some((key, value)) = line.split_once('=') else { continue };
+            let Some((key, value)) = line.split_once('=') else {
+                continue;
+            };
             let key = key.trim();
             if key.is_empty() || !key.chars().all(|c| c.is_alphanumeric() || c == '_') {
                 continue;
@@ -55,7 +65,10 @@ fn load_targets() -> Vec<StandardTarget> {
             ("Discord CDN", "https://cdn.discordapp.com"),
             ("YouTube Web", "https://www.youtube.com"),
             ("YouTube Image", "https://i.ytimg.com"),
-            ("YouTube Video Redirect", "https://redirector.googlevideo.com"),
+            (
+                "YouTube Video Redirect",
+                "https://redirector.googlevideo.com",
+            ),
             ("Google Main", "https://www.google.com"),
             ("Cloudflare Web", "https://www.cloudflare.com"),
             ("Cloudflare DNS 1.1.1.1", "PING:1.1.1.1"),
@@ -69,7 +82,11 @@ fn load_targets() -> Vec<StandardTarget> {
 
 fn convert_target(name: &str, value: &str) -> StandardTarget {
     if let Some(ip) = value.strip_prefix("PING:") {
-        StandardTarget { name: name.into(), url: None, ping: Some(ip.trim().into()) }
+        StandardTarget {
+            name: name.into(),
+            url: None,
+            ping: Some(ip.trim().into()),
+        }
     } else {
         let host = value
             .trim_start_matches("https://")
@@ -78,18 +95,32 @@ fn convert_target(name: &str, value: &str) -> StandardTarget {
             .next()
             .unwrap_or("")
             .to_string();
-        StandardTarget { name: name.into(), url: Some(value.into()), ping: Some(host) }
+        StandardTarget {
+            name: name.into(),
+            url: Some(value.into()),
+            ping: Some(host),
+        }
     }
 }
 
 /// One curl HTTP/TLS probe; returns OK | UNSUP | SSL | ERROR.
 async fn curl_probe(url: &str, proto_args: &[&str]) -> String {
     let mut cmd = crate::util::hidden_command_async(curl_bin());
-    cmd.args(["-I", "-s", "-m", &CURL_TIMEOUT_SECS.to_string(), "-o", devnull(), "-w", "%{http_code}", "--show-error"])
-        .args(proto_args)
-        .arg(url)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    cmd.args([
+        "-I",
+        "-s",
+        "-m",
+        &CURL_TIMEOUT_SECS.to_string(),
+        "-o",
+        devnull(),
+        "-w",
+        "%{http_code}",
+        "--show-error",
+    ])
+    .args(proto_args)
+    .arg(url)
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
 
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(CURL_TIMEOUT_SECS + 5),
@@ -121,7 +152,11 @@ async fn curl_probe(url: &str, proto_args: &[&str]) -> String {
     {
         return "UNSUP".into();
     }
-    if exit == 0 { "OK".into() } else { "ERROR".into() }
+    if exit == 0 {
+        "OK".into()
+    } else {
+        "ERROR".into()
+    }
 }
 
 /// 3-packet ping; returns ("23 ms") or None on timeout.
@@ -216,7 +251,11 @@ async fn run_standard_target(config: &str, t: &StandardTarget) -> TargetOutcome 
     let status = if any_fail && any_ok {
         "warn"
     } else if any_fail {
-        if ping_text == "Timeout" && !any_ok { "timeout" } else { "fail" }
+        if ping_text == "Timeout" && !any_ok {
+            "timeout"
+        } else {
+            "fail"
+        }
     } else {
         "ok"
     };
@@ -251,9 +290,12 @@ async fn run_service_target(
             pieces.push(format!("HTTPS {} · {} ms", http.code, http.millis));
             if target.bulk {
                 if let Some(file) = payload {
-                    let bulk = probe::bulk(services::host_of(url), file, SERVICE_TIMEOUT_SECS).await;
+                    let bulk =
+                        probe::bulk(services::host_of(url), file, SERVICE_TIMEOUT_SECS).await;
                     match bulk.state {
-                        probe::BulkState::Ok => pieces.push(format!("bulk OK ({:.1}s)", bulk.millis as f64 / 1000.0)),
+                        probe::BulkState::Ok => {
+                            pieces.push(format!("bulk OK ({:.1}s)", bulk.millis as f64 / 1000.0))
+                        }
                         probe::BulkState::Blocked => {
                             pieces.push("bulk FROZEN (throttled)".into());
                             status = "warn";
@@ -266,7 +308,11 @@ async fn run_service_target(
                 }
             }
         } else {
-            let reason = if http.error.is_empty() { "no response".to_string() } else { http.error.clone() };
+            let reason = if http.error.is_empty() {
+                "no response".to_string()
+            } else {
+                http.error.clone()
+            };
             pieces.push(format!("HTTPS: {reason}"));
             status = if http.error == "timeout" || http.error.to_lowercase().contains("timed out") {
                 "timeout"
@@ -329,11 +375,17 @@ async fn fetch_dpi_suite() -> Result<Vec<DpiEntry>, String> {
         .send()
         .await
         .map_err(|e| format!("failed to fetch DPI suite: {e}"))?;
-    resp.json::<Vec<DpiEntry>>().await.map_err(|e| e.to_string())
+    resp.json::<Vec<DpiEntry>>()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// POST a random payload with --range, detecting the 16-20KB freeze pattern.
-async fn run_dpi_target(config: &str, entry: &DpiEntry, payload_file: &std::path::Path) -> TargetOutcome {
+async fn run_dpi_target(
+    config: &str,
+    entry: &DpiEntry,
+    payload_file: &std::path::Path,
+) -> TargetOutcome {
     let mut pieces = Vec::new();
     let mut blocked = false;
     let mut any_fail = false;
@@ -345,12 +397,18 @@ async fn run_dpi_target(config: &str, entry: &DpiEntry, payload_file: &std::path
     ] {
         let mut cmd = crate::util::hidden_command_async(curl_bin());
         cmd.args([
-            "--range", &format!("0-{}", DPI_RANGE_BYTES - 1),
-            "-m", &CURL_TIMEOUT_SECS.to_string(),
-            "-w", "%{http_code} %{size_upload} %{size_download} %{time_total}",
-            "-o", devnull(),
-            "-X", "POST",
-            "--data-binary", &format!("@{}", payload_file.display()),
+            "--range",
+            &format!("0-{}", DPI_RANGE_BYTES - 1),
+            "-m",
+            &CURL_TIMEOUT_SECS.to_string(),
+            "-w",
+            "%{http_code} %{size_upload} %{size_download} %{time_total}",
+            "-o",
+            devnull(),
+            "-X",
+            "POST",
+            "--data-binary",
+            &format!("@{}", payload_file.display()),
             "-s",
         ])
         .args(&proto_args)
@@ -394,12 +452,20 @@ async fn run_dpi_target(config: &str, entry: &DpiEntry, payload_file: &std::path
         }
     }
 
-    let status = if blocked { "fail" } else if any_fail { "warn" } else { "ok" };
+    let status = if blocked {
+        "fail"
+    } else if any_fail {
+        "warn"
+    } else {
+        "ok"
+    };
     let provider = entry.provider.clone().unwrap_or_default();
     let country = entry.country.clone().unwrap_or_default();
     TargetOutcome {
         config: config.into(),
-        name: format!("{country} {provider} {}", entry.id).trim().to_string(),
+        name: format!("{country} {provider} {}", entry.id)
+            .trim()
+            .to_string(),
         status: status.into(),
         detail: pieces.join("  "),
         group: None,
@@ -498,10 +564,18 @@ async fn run_tests_inner(
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
     let was_running_strategy = state.current_strategy.lock().unwrap().clone();
+    if crate::zapret::process::winws_running() && was_running_strategy.is_none() {
+        return Err(
+            "winws.exe is already running outside this EasyZapret session; stop it before testing strategies"
+                .into(),
+        );
+    }
 
     logs::append(
         "tests",
-        &format!("=== Test run started: mode={mode}, services={service_ids:?}, configs={configs:?} ==="),
+        &format!(
+            "=== Test run started: mode={mode}, services={service_ids:?}, configs={configs:?} ==="
+        ),
     );
 
     // winws references *-user.txt lists that the release does not ship.
@@ -514,7 +588,11 @@ async fn run_tests_inner(
     }
 
     let standard_targets = load_targets();
-    let dpi_targets = if mode == "dpi" { fetch_dpi_suite().await.unwrap_or_default() } else { Vec::new() };
+    let dpi_targets = if mode == "dpi" {
+        fetch_dpi_suite().await.unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     if mode == "dpi" && dpi_targets.is_empty() {
         if ipset_switched {
             ipset_restore();
@@ -542,20 +620,27 @@ async fn run_tests_inner(
     } else {
         Vec::new()
     };
-    let service_payload = if mode == "service" { probe::ensure_payload() } else { None };
+    let service_payload = if mode == "service" {
+        probe::ensure_payload()
+    } else {
+        None
+    };
 
     let total_targets = match mode {
         "dpi" => dpi_targets.len(),
         "service" => service_jobs.len(),
         _ => standard_targets.len(),
     };
-    emit(app, json!({
-        "kind": "started",
-        "mode": mode,
-        "configs": configs,
-        "services": service_ids,
-        "targetsPerConfig": total_targets,
-    }));
+    emit(
+        app,
+        json!({
+            "kind": "started",
+            "mode": mode,
+            "configs": configs,
+            "services": service_ids,
+            "targetsPerConfig": total_targets,
+        }),
+    );
 
     let mut summary: Vec<(String, usize, usize)> = Vec::new();
 
@@ -563,7 +648,10 @@ async fn run_tests_inner(
         if state.tests_cancel.load(Ordering::SeqCst) {
             break 'configs;
         }
-        emit(app, json!({ "kind": "config-start", "config": config, "index": i, "total": configs.len() }));
+        emit(
+            app,
+            json!({ "kind": "config-start", "config": config, "index": i, "total": configs.len() }),
+        );
         logs::append("tests", &format!("--- Config: {config} ---"));
 
         // Fresh start for each config.
@@ -573,7 +661,10 @@ async fn run_tests_inner(
             Ok(a) => a,
             Err(e) => {
                 logs::append("tests", &format!("{config}: cannot parse strategy: {e}"));
-                emit(app, json!({ "kind": "config-done", "config": config, "ok": 0, "fail": 0, "error": e }));
+                emit(
+                    app,
+                    json!({ "kind": "config-done", "config": config, "ok": 0, "fail": 0, "error": e }),
+                );
                 continue;
             }
         };
@@ -587,7 +678,10 @@ async fn run_tests_inner(
         let mut child = match child {
             Ok(c) => c,
             Err(e) => {
-                emit(app, json!({ "kind": "config-done", "config": config, "ok": 0, "fail": 0, "error": format!("winws start failed: {e}") }));
+                emit(
+                    app,
+                    json!({ "kind": "config-done", "config": config, "ok": 0, "fail": 0, "error": format!("winws start failed: {e}") }),
+                );
                 continue;
             }
         };
@@ -602,7 +696,16 @@ async fn run_tests_inner(
         // Each probe logs and emits its result the moment it finishes, so the
         // UI updates live instead of after the whole config completes.
         fn report(app: &AppHandle, outcome: &TargetOutcome) {
-            logs::append("tests", &format!("{}: [{}] {} — {}", outcome.config, outcome.status.to_uppercase(), outcome.name, outcome.detail));
+            logs::append(
+                "tests",
+                &format!(
+                    "{}: [{}] {} — {}",
+                    outcome.config,
+                    outcome.status.to_uppercase(),
+                    outcome.name,
+                    outcome.detail
+                ),
+            );
             emit(app, json!({ "kind": "target-result", "result": outcome }));
         }
 
@@ -615,7 +718,8 @@ async fn run_tests_inner(
                     let app = app.clone();
                     let payload = service_payload.clone();
                     async move {
-                        let outcome = run_service_target(&config, service, target, payload.as_deref()).await;
+                        let outcome =
+                            run_service_target(&config, service, target, payload.as_deref()).await;
                         report(&app, &outcome);
                         outcome
                     }
@@ -658,7 +762,11 @@ async fn run_tests_inner(
             all
         };
         for outcome in &outcomes {
-            if outcome.status == "ok" { ok_count += 1 } else { fail_count += 1 }
+            if outcome.status == "ok" {
+                ok_count += 1
+            } else {
+                fail_count += 1
+            }
         }
 
         let _ = child.kill();
@@ -666,7 +774,8 @@ async fn run_tests_inner(
         crate::zapret::process::kill_all_winws();
 
         // Per-service tally for the comparison table (quick service tests only).
-        let mut groups: std::collections::BTreeMap<String, (usize, usize)> = std::collections::BTreeMap::new();
+        let mut groups: std::collections::BTreeMap<String, (usize, usize)> =
+            std::collections::BTreeMap::new();
         for outcome in &outcomes {
             if let Some(group) = &outcome.group {
                 let entry = groups.entry(group.clone()).or_insert((0, 0));
@@ -683,13 +792,16 @@ async fn run_tests_inner(
             .into();
 
         summary.push((config.clone(), ok_count, fail_count));
-        emit(app, json!({
-            "kind": "config-done",
-            "config": config,
-            "ok": ok_count,
-            "fail": fail_count,
-            "groups": groups_json,
-        }));
+        emit(
+            app,
+            json!({
+                "kind": "config-done",
+                "config": config,
+                "ok": ok_count,
+                "fail": fail_count,
+                "groups": groups_json,
+            }),
+        );
     }
 
     if ipset_switched {
@@ -714,12 +826,18 @@ async fn run_tests_inner(
         .iter()
         .max_by_key(|(_, ok, _)| *ok)
         .map(|(name, _, _)| name.clone());
-    logs::append("tests", &format!("=== Test run finished. Best config: {best:?} ==="));
-    emit(app, json!({
-        "kind": "finished",
-        "best": best,
-        "summary": summary.iter().map(|(c, ok, fail)| json!({ "config": c, "ok": ok, "fail": fail })).collect::<Vec<_>>(),
-    }));
+    logs::append(
+        "tests",
+        &format!("=== Test run finished. Best config: {best:?} ==="),
+    );
+    emit(
+        app,
+        json!({
+            "kind": "finished",
+            "best": best,
+            "summary": summary.iter().map(|(c, ok, fail)| json!({ "config": c, "ok": ok, "fail": fail })).collect::<Vec<_>>(),
+        }),
+    );
     Ok(())
 }
 

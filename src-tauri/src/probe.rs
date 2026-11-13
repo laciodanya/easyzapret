@@ -10,11 +10,19 @@ use std::time::{Duration, Instant};
 use crate::paths;
 
 pub fn curl_bin() -> &'static str {
-    if cfg!(windows) { "curl.exe" } else { "curl" }
+    if cfg!(windows) {
+        "curl.exe"
+    } else {
+        "curl"
+    }
 }
 
 pub fn devnull() -> &'static str {
-    if cfg!(windows) { "NUL" } else { "/dev/null" }
+    if cfg!(windows) {
+        "NUL"
+    } else {
+        "/dev/null"
+    }
 }
 
 /// Size of the random body used by [`bulk`]; large enough to cross the
@@ -60,10 +68,18 @@ pub async fn http(url: &str, timeout_secs: u64) -> HttpProbe {
     let result = tokio::time::timeout(Duration::from_secs(timeout_secs + 3), cmd.output()).await;
     let millis = started.elapsed().as_millis() as u64;
     let Ok(Ok(out)) = result else {
-        return HttpProbe { ok: false, code: 0, millis, error: "timeout".into() };
+        return HttpProbe {
+            ok: false,
+            code: 0,
+            millis,
+            error: "timeout".into(),
+        };
     };
 
-    let code: u16 = String::from_utf8_lossy(&out.stdout).trim().parse().unwrap_or(0);
+    let code: u16 = String::from_utf8_lossy(&out.stdout)
+        .trim()
+        .parse()
+        .unwrap_or(0);
     let error = String::from_utf8_lossy(&out.stderr)
         .lines()
         .next()
@@ -71,7 +87,12 @@ pub async fn http(url: &str, timeout_secs: u64) -> HttpProbe {
         .trim()
         .trim_start_matches("curl: ")
         .to_string();
-    HttpProbe { ok: out.status.success() && code > 0, code, millis, error }
+    HttpProbe {
+        ok: out.status.success() && code > 0,
+        code,
+        millis,
+        error,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,7 +113,10 @@ pub struct BulkProbe {
 pub fn ensure_payload() -> Option<PathBuf> {
     use rand::RngCore;
     let path = paths::tmp_dir().join("probe_payload.bin");
-    if std::fs::metadata(&path).map(|m| m.len() as usize == BULK_BYTES).unwrap_or(false) {
+    if std::fs::metadata(&path)
+        .map(|m| m.len() as usize == BULK_BYTES)
+        .unwrap_or(false)
+    {
         return Some(path);
     }
     std::fs::create_dir_all(paths::tmp_dir()).ok()?;
@@ -132,14 +156,20 @@ pub async fn bulk(host: &str, payload: &Path, timeout_secs: u64) -> BulkProbe {
     let result = tokio::time::timeout(Duration::from_secs(timeout_secs + 4), cmd.output()).await;
     let millis = started.elapsed().as_millis() as u64;
     let Ok(Ok(out)) = result else {
-        return BulkProbe { state: BulkState::Failed, millis };
+        return BulkProbe {
+            state: BulkState::Failed,
+            millis,
+        };
     };
 
     let exit = out.status.code().unwrap_or(-1);
     let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
     let parts: Vec<&str> = text.split_whitespace().collect();
     if parts.len() != 4 {
-        return BulkProbe { state: BulkState::Failed, millis };
+        return BulkProbe {
+            state: BulkState::Failed,
+            millis,
+        };
     }
     let up: i64 = parts[1].parse().unwrap_or(0);
     let down: i64 = parts[2].parse().unwrap_or(0);

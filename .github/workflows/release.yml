@@ -5,122 +5,187 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag matching src-tauri/tauri.conf.json (for example v0.6.1)"
+        required: true
+        type: string
 
-permissions:
-  contents: write
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
-  release-windows:
+  build-windows:
     runs-on: windows-latest
+    permissions:
+      contents: read
+    outputs:
+      release_tag: ${{ steps.release_meta.outputs.tag }}
+      release_sha: ${{ steps.release_meta.outputs.sha }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          # A manual run may only rebuild an existing immutable tag. This
+          # prevents replacing release assets with binaries from another ref.
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
 
       - name: Rust cache
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         with:
           workspaces: src-tauri
 
-      - name: Validate signing key secret
+      - name: Resolve and validate release tag
+        id: release_meta
         shell: bash
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+          REF_TAG: ${{ github.ref_name }}
         run: |
-          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            echo "::error::TAURI_SIGNING_PRIVATE_KEY secret is empty"
-            exit 1
-          fi
-          key="$TAURI_SIGNING_PRIVATE_KEY"
-          if echo "$key" | grep -qi "encrypted secret key"; then
-            echo "Signing key: raw format"
-          elif printf '%s' "$key" | tr -d '\n\r ' | base64 -d 2>/dev/null | grep -qi "encrypted secret key"; then
-            echo "Signing key: base64-encoded format"
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$DISPATCH_TAG"
           else
-            echo "::error::TAURI_SIGNING_PRIVATE_KEY looks invalid. Paste ~/.tauri/easyzapret-updater.key as-is (see docs/UPDATER_SETUP.md)."
+            TAG="$REF_TAG"
+          fi
+          TAURI_VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          CARGO_VERSION=$(cargo metadata --manifest-path src-tauri/Cargo.toml --no-deps --format-version 1 | node -e "let s=''; process.stdin.on('data', d => s += d); process.stdin.on('end', () => console.log(JSON.parse(s).packages[0].version));")
+          if [ "$TAURI_VERSION" != "$PACKAGE_VERSION" ] || [ "$TAURI_VERSION" != "$CARGO_VERSION" ]; then
+            echo "::error::Version mismatch: tauri=$TAURI_VERSION package=$PACKAGE_VERSION cargo=$CARGO_VERSION"
             exit 1
           fi
+          if [ "$TAG" != "v$TAURI_VERSION" ]; then
+            echo "::error::Release tag $TAG does not match application version v$TAURI_VERSION"
+            exit 1
+          fi
+          if ! git show-ref --verify --quiet "refs/tags/$TAG"; then
+            echo "::error::$TAG is not an existing Git tag"
+            exit 1
+          fi
+          if [ "$EVENT_NAME" != "workflow_dispatch" ] && [ "${GITHUB_REF:-}" != "refs/tags/$TAG" ]; then
+            echo "::error::Release workflow must run from refs/tags/$TAG, got ${GITHUB_REF:-unknown}"
+            exit 1
+          fi
+          HEAD_SHA=$(git rev-parse HEAD)
+          TAG_SHA=$(git rev-parse "refs/tags/$TAG^{commit}")
+          if [ -z "$TAG_SHA" ] || [ "$HEAD_SHA" != "$TAG_SHA" ]; then
+            echo "::error::Checked out commit $HEAD_SHA does not match tag $TAG ($TAG_SHA)"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Prepare signing secrets
-        shell: bash
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          trim() { printf '%s' "$1" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
-          key="$(trim "$TAURI_SIGNING_PRIVATE_KEY")"
-          # Single-line base64 keys must not keep accidental newlines from paste.
-          if ! echo "$key" | grep -q "encrypted secret key"; then
-            key="$(printf '%s' "$key" | tr -d '\n')"
-          fi
-          pass="$(trim "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD")"
-          if [ -z "$pass" ]; then
-            echo "::error::TAURI_SIGNING_PRIVATE_KEY_PASSWORD is empty"
-            exit 1
-          fi
-          {
-            echo "TAURI_SIGNING_PRIVATE_KEY<<__SIGNING_KEY_EOF__"
-            echo "$key"
-            echo "__SIGNING_KEY_EOF__"
-            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$pass"
-          } >> "$GITHUB_ENV"
+      - name: Dependency audit
+        run: npm audit --audit-level=high
 
-      - name: Test updater signing key
-        shell: bash
-        run: |
-          set -e
-          echo smoke > smoke.txt
-          npx tauri signer sign smoke.txt
-          rm -f smoke.txt smoke.txt.sig
+      - name: Frontend tests
+        run: npm test
+
+      - name: Frontend build
+        run: npm run build
+
+      - name: Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Rust lint
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test --all-features
 
       - name: Build Tauri app
         shell: bash
         env:
           RUST_BACKTRACE: 1
         run: |
+          set -euo pipefail
           set -o pipefail
-          npm run tauri build -- --verbose 2>&1 | tee build.log
+          npm run tauri build -- --verbose --config '{"bundle":{"createUpdaterArtifacts":false}}' 2>&1 | tee build.log
+
+      - name: Sign updater artifact
+        shell: bash
+        env:
+          RAW_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          RAW_SIGNING_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          trim() { printf '%s' "$1" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
+          key="$(trim "$RAW_SIGNING_KEY")"
+          pass="$(trim "$RAW_SIGNING_PASSWORD")"
+          if [ -z "$key" ] || [ -z "$pass" ]; then
+            echo "::error::Tauri signing key or password is empty"
+            exit 1
+          fi
+          if ! echo "$key" | grep -q "encrypted secret key"; then
+            key="$(printf '%s' "$key" | tr -d '\n')"
+          fi
+          export TAURI_SIGNING_PRIVATE_KEY="$key"
+          export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$pass"
+          printf 'signing smoke test' > smoke.txt
+          npx tauri signer sign smoke.txt
+          BUNDLE_DIR="src-tauri/target/release/bundle/nsis"
+          EXE=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*-setup.exe' -print -quit)
+          if [ -z "$EXE" ]; then
+            echo "::error::NSIS bundle was not produced"
+            exit 1
+          fi
+          npx tauri signer sign "$EXE"
+
+      - name: Verify updater signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+          UPDATER_PUBLIC_KEY=$(node -p "require('./src-tauri/tauri.conf.json').plugins.updater.pubkey")
+          cargo run --quiet --manifest-path src-tauri/Cargo.toml --example verify_updater_signature -- smoke.txt smoke.txt.sig "$UPDATER_PUBLIC_KEY"
+          BUNDLE_DIR="src-tauri/target/release/bundle/nsis"
+          EXE=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*-setup.exe' -print -quit)
+          cargo run --quiet --manifest-path src-tauri/Cargo.toml --example verify_updater_signature -- "$EXE" "$EXE.sig" "$UPDATER_PUBLIC_KEY"
+          rm -f smoke.txt smoke.txt.sig
 
       - name: Upload build log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: tauri-build-log
           path: build.log
           if-no-files-found: ignore
 
-      - name: Print build log tail on failure
-        if: failure()
-        shell: bash
-        run: |
-          echo "===== last 120 lines of build.log ====="
-          tail -n 120 build.log || true
-
-      - name: List bundle artifacts
-        shell: bash
-        run: |
-          ls -la src-tauri/target/release/bundle/nsis/ || ls -laR src-tauri/target/release/bundle/
-
       - name: Generate latest.json
         shell: bash
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ steps.release_meta.outputs.tag }}
         run: |
           set -euo pipefail
           BUNDLE_DIR="src-tauri/target/release/bundle/nsis"
-          EXE=$(ls "$BUNDLE_DIR"/*-setup.exe | head -1)
-          SIG=$(ls "$BUNDLE_DIR"/*-setup.exe.sig | head -1)
+          EXE=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*-setup.exe' -print -quit)
+          SIG="$EXE.sig"
+          if [ -z "$EXE" ] || [ ! -f "$SIG" ]; then
+            echo "::error::Signed NSIS bundle was not produced"
+            exit 1
+          fi
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
           EXE_NAME=$(basename "$EXE")
           SIG_CONTENT=$(tr -d '\n\r' < "$SIG")
@@ -144,33 +209,45 @@ jobs:
             JSON.stringify(manifest, null, 2),
           );
           NODE
-          cat src-tauri/target/release/bundle/nsis/latest.json
 
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
+      - name: Upload release bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          tag_name: ${{ github.ref_name }}
-          name: EasyZapret ${{ github.ref_name }}
+          name: release-bundle
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/nsis/*-setup.exe.sig
+            src-tauri/target/release/bundle/nsis/latest.json
+
+  publish:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-bundle
+          path: release-bundle
+
+      - name: Publish draft release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ needs.build-windows.outputs.release_tag }}
+          name: EasyZapret ${{ needs.build-windows.outputs.release_tag }}
+          target_commitish: ${{ needs.build-windows.outputs.release_sha }}
           draft: true
           generate_release_notes: false
           body: |
             ## What's Changed
 
-            - Автопилот стал умнее: проверяет сервисы (Discord, YouTube, Telegram, Cloudflare), подтверждает сбой перед сменой стратегии, учитывает отсутствие интернета, откатывается на рабочую стратегию и запоминает удачные
-            - Быстрые тесты стратегий по сервисам (например, только Discord) с живой таблицей результатов; можно выбрать сразу несколько стратегий для проверки
-            - Главная: большие кнопки включения Zapret, Telegram, WARP и Автопилота, ниже спокойная сводка доступности сервисов; убрана дублирующая страница «Стратегии»
-            - Кнопка проверки обновлений в заголовке окна; новое шрифтовое оформление и более плавные анимации
-            - Исправлена иконка приложения: прозрачный фон вместо чёрного
-            - Диагностика сама прокручивается к результатам; очистка кэша Discord вынесена в отдельный блок, окно подтверждения по центру
-            - Telegram Proxy: сервер, порт и ключ копируются, ключ можно показать
-            - WARP: переключатель режима показывает реальный режим
-            - Логи стали подробнее, добавлен отчёт для GitHub одним нажатием
-            - Тема «Amethyst» переименована в «Тёмную»
-            - Полностью переработан интерфейс
+            - Жёстче проверка загрузок Zapret и Telegram Proxy: хеши закреплены в приложении, ZIP не распакует опасные пути, есть staging и откат при сбое
+            - Защита папки данных `C:\EasyZapret`: отказ от junction/reparse, аккуратнее права доступа, атомарная запись настроек
+            - Релизный workflow подписывает только настоящие git-теги, а не одноимённые ветки
+            - Добавлен CI на push/PR и Dependabot
 
-            **Full Changelog**: https://github.com/laciodanya/easyzapret/compare/v0.5.4...v0.6.0
+            **Full Changelog**: https://github.com/laciodanya/easyzapret/compare/v0.6.0...v0.6.1
           fail_on_unmatched_files: true
-          files: |
-            src-tauri/target/release/bundle/nsis/*-setup.exe
-            src-tauri/target/release/bundle/nsis/*-setup.exe.sig
-            src-tauri/target/release/bundle/nsis/latest.json
+          files: release-bundle/*

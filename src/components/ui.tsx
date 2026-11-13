@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { copyText } from "../lib/clipboard";
@@ -481,17 +481,76 @@ export function Modal({
   size?: "sm" | "md" | "lg";
 }) {
   const { t } = useTranslation();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  const titleId = useId();
+  const { mounted, state } = usePresence(open, 160);
 
   useEffect(() => {
-    if (!open || !onClose) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
-  const { mounted, state } = usePresence(open, 160);
+  useEffect(() => {
+    if (!open) return;
+    const previousFocus = document.activeElement;
+    const dialog = dialogRef.current;
+    const topmostDialog = () => {
+      const dialogs = document.querySelectorAll<HTMLElement>(
+        '[data-ez-modal="true"][data-state="open"]',
+      );
+      return dialogs.item(dialogs.length - 1);
+    };
+    const focusable = () =>
+      Array.from(
+        dialog?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter((element) => !element.hasAttribute("hidden") && element.offsetParent !== null);
+
+    const frame = window.requestAnimationFrame(() => {
+      if (!dialog || topmostDialog() !== dialog) return;
+      if (document.activeElement instanceof HTMLElement && dialog.contains(document.activeElement)) {
+        return;
+      }
+      (focusable()[0] ?? dialog).focus();
+    });
+    const onKey = (e: KeyboardEvent) => {
+      if (!dialog || topmostDialog() !== dialog) return;
+      if (e.key === "Escape") {
+        if (onCloseRef.current) {
+          e.preventDefault();
+          onCloseRef.current();
+        }
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const items = focusable();
+      if (items.length === 0) {
+        e.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !dialog.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || !dialog.contains(active))) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", onKey);
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+        previousFocus.focus();
+      }
+    };
+  }, [open]);
+
   if (!mounted) return null;
 
   const width = { sm: "max-w-sm", md: "max-w-md", lg: "max-w-2xl" }[size];
@@ -510,9 +569,12 @@ export function Modal({
         onClick={onClose}
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        data-ez-modal="true"
         data-state={state}
         className={cn(
           "ez-modal relative flex max-h-[calc(100vh-48px)] w-full flex-col rounded-modal bg-panel shadow-[var(--shadow-modal)]",
@@ -520,7 +582,7 @@ export function Modal({
         )}
       >
         <div className="flex items-start justify-between gap-4 px-6 pt-5">
-          <h2 className="text-lg font-semibold leading-snug">{title}</h2>
+          <h2 id={titleId} className="text-lg font-semibold leading-snug">{title}</h2>
           {onClose && (
             <IconButton
               icon="x"

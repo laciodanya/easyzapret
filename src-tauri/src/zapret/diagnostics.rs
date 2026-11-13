@@ -15,7 +15,11 @@ pub struct DiagItem {
 }
 
 fn item(id: &str, status: &str, detail: impl Into<String>) -> DiagItem {
-    DiagItem { id: id.into(), status: status.into(), detail: detail.into() }
+    DiagItem {
+        id: id.into(),
+        status: status.into(),
+        detail: detail.into(),
+    }
 }
 
 /// Run Diagnostics — the same checks service.bat performs, returned as
@@ -25,7 +29,11 @@ fn item(id: &str, status: &str, detail: impl Into<String>) -> DiagItem {
 pub fn run_diagnostics() -> Vec<DiagItem> {
     #[cfg(not(windows))]
     {
-        return vec![item("platform", "warn", "Diagnostics are available on Windows only")];
+        vec![item(
+            "platform",
+            "warn",
+            "Diagnostics are available on Windows only",
+        )]
     }
     #[cfg(windows)]
     {
@@ -42,12 +50,22 @@ pub fn run_diagnostics() -> Vec<DiagItem> {
         // System proxy
         let (_, proxy_enable) = run_capture(
             "reg",
-            &["query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings", "/v", "ProxyEnable"],
+            &[
+                "query",
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+                "/v",
+                "ProxyEnable",
+            ],
         );
         if proxy_enable.contains("0x1") {
             let (_, proxy_server) = run_capture(
                 "reg",
-                &["query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings", "/v", "ProxyServer"],
+                &[
+                    "query",
+                    r"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+                    "/v",
+                    "ProxyServer",
+                ],
             );
             let server = proxy_server
                 .lines()
@@ -61,13 +79,16 @@ pub fn run_diagnostics() -> Vec<DiagItem> {
 
         // TCP timestamps (auto-enable like the bat)
         let (_, tcp) = run_capture("netsh", &["interface", "tcp", "show", "global"]);
-        let ts_enabled = tcp
-            .lines()
-            .any(|l| l.to_lowercase().contains("timestamps") && l.to_lowercase().contains("enabled"));
+        let ts_enabled = tcp.lines().any(|l| {
+            l.to_lowercase().contains("timestamps") && l.to_lowercase().contains("enabled")
+        });
         if ts_enabled {
             out.push(item("tcp_timestamps", "ok", ""));
         } else {
-            let (fixed, _) = run_capture("netsh", &["interface", "tcp", "set", "global", "timestamps=enabled"]);
+            let (fixed, _) = run_capture(
+                "netsh",
+                &["interface", "tcp", "set", "global", "timestamps=enabled"],
+            );
             out.push(if fixed {
                 item("tcp_timestamps", "ok", "auto-enabled")
             } else {
@@ -78,7 +99,11 @@ pub fn run_diagnostics() -> Vec<DiagItem> {
         // Adguard
         let (_, tasks) = run_capture("tasklist", &["/FI", "IMAGENAME eq AdguardSvc.exe"]);
         if tasks.to_lowercase().contains("adguardsvc.exe") {
-            out.push(item("adguard", "fail", "https://github.com/Flowseal/zapret-discord-youtube/issues/417"));
+            out.push(item(
+                "adguard",
+                "fail",
+                "https://github.com/Flowseal/zapret-discord-youtube/issues/417",
+            ));
         } else {
             out.push(item("adguard", "ok", ""));
         }
@@ -88,25 +113,44 @@ pub fn run_diagnostics() -> Vec<DiagItem> {
         let services_upper = services.to_uppercase();
 
         if services_upper.contains("KILLER") {
-            out.push(item("killer", "fail", "Killer services conflict with zapret"));
+            out.push(item(
+                "killer",
+                "fail",
+                "Killer services conflict with zapret",
+            ));
         } else {
             out.push(item("killer", "ok", ""));
         }
 
-        if services_upper.contains("INTEL") && services_upper.contains("CONNECTIVITY") && services_upper.contains("NETWORK") {
-            out.push(item("intel_connectivity", "fail", "Intel Connectivity Network Service conflicts with zapret"));
+        if services_upper.contains("INTEL")
+            && services_upper.contains("CONNECTIVITY")
+            && services_upper.contains("NETWORK")
+        {
+            out.push(item(
+                "intel_connectivity",
+                "fail",
+                "Intel Connectivity Network Service conflicts with zapret",
+            ));
         } else {
             out.push(item("intel_connectivity", "ok", ""));
         }
 
         if services_upper.contains("TRACSRVWRAPPER") || services_upper.contains("EPWD") {
-            out.push(item("checkpoint", "fail", "Check Point services conflict with zapret"));
+            out.push(item(
+                "checkpoint",
+                "fail",
+                "Check Point services conflict with zapret",
+            ));
         } else {
             out.push(item("checkpoint", "ok", ""));
         }
 
         if services_upper.contains("SMARTBYTE") {
-            out.push(item("smartbyte", "fail", "SmartByte services conflict with zapret"));
+            out.push(item(
+                "smartbyte",
+                "fail",
+                "SmartByte services conflict with zapret",
+            ));
         } else {
             out.push(item("smartbyte", "ok", ""));
         }
@@ -115,7 +159,11 @@ pub fn run_diagnostics() -> Vec<DiagItem> {
         if paths::zapret_bin_dir().join("WinDivert64.sys").exists() {
             out.push(item("windivert_sys", "ok", ""));
         } else {
-            out.push(item("windivert_sys", "fail", "WinDivert64.sys not found (antivirus may have removed it)"));
+            out.push(item(
+                "windivert_sys",
+                "fail",
+                "WinDivert64.sys not found (antivirus may have removed it)",
+            ));
         }
 
         // VPN services
@@ -136,7 +184,12 @@ pub fn run_diagnostics() -> Vec<DiagItem> {
             &["-NoProfile", "-Command",
               "Get-ChildItem -Recurse -Path 'HKLM:System\\CurrentControlSet\\Services\\Dnscache\\InterfaceSpecificParameters\\' | Get-ItemProperty | Where-Object { $_.DohFlags -gt 0 } | Measure-Object | Select-Object -ExpandProperty Count"],
         );
-        let doh_count: i64 = doh.trim().lines().last().and_then(|l| l.trim().parse().ok()).unwrap_or(0);
+        let doh_count: i64 = doh
+            .trim()
+            .lines()
+            .last()
+            .and_then(|l| l.trim().parse().ok())
+            .unwrap_or(0);
         if doh_count > 0 {
             out.push(item("secure_dns", "ok", ""));
         } else {
@@ -145,10 +198,15 @@ pub fn run_diagnostics() -> Vec<DiagItem> {
 
         // hosts entries for YouTube
         let root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
-        let hosts = std::fs::read_to_string(format!("{root}\\System32\\drivers\\etc\\hosts")).unwrap_or_default();
+        let hosts = std::fs::read_to_string(format!("{root}\\System32\\drivers\\etc\\hosts"))
+            .unwrap_or_default();
         let hosts_lower = hosts.to_lowercase();
         if hosts_lower.contains("youtube.com") || hosts_lower.contains("youtu.be") {
-            out.push(item("hosts_youtube", "warn", "hosts file contains youtube.com / youtu.be entries"));
+            out.push(item(
+                "hosts_youtube",
+                "warn",
+                "hosts file contains youtube.com / youtu.be entries",
+            ));
         } else {
             out.push(item("hosts_youtube", "ok", ""));
         }
@@ -156,14 +214,25 @@ pub fn run_diagnostics() -> Vec<DiagItem> {
         // Orphaned WinDivert (winws not running but driver service active)
         let winws_running = super::process::winws_running();
         let windivert_state = super::service::query_service_state("WinDivert");
-        let windivert_active = matches!(windivert_state.as_deref(), Some("RUNNING") | Some("STOP_PENDING"));
+        let windivert_active = matches!(
+            windivert_state.as_deref(),
+            Some("RUNNING") | Some("STOP_PENDING")
+        );
         if !winws_running && windivert_active {
             let _ = run_capture("net", &["stop", "WinDivert"]);
             let _ = run_capture("sc", &["delete", "WinDivert"]);
             if super::service::query_service_state("WinDivert").is_some() {
-                out.push(item("windivert_orphan", "fail", "WinDivert is held by another bypass and could not be removed"));
+                out.push(item(
+                    "windivert_orphan",
+                    "fail",
+                    "WinDivert is held by another bypass and could not be removed",
+                ));
             } else {
-                out.push(item("windivert_orphan", "warn", "Orphaned WinDivert service was removed"));
+                out.push(item(
+                    "windivert_orphan",
+                    "warn",
+                    "Orphaned WinDivert service was removed",
+                ));
             }
         } else {
             out.push(item("windivert_orphan", "ok", ""));
@@ -190,7 +259,10 @@ pub fn run_diagnostics() -> Vec<DiagItem> {
                 _ => logs::append("app", line.trim_end()),
             }
         }
-        logs::append("app", &format!("Diagnostics executed ({} checks)", out.len()));
+        logs::append(
+            "app",
+            &format!("Diagnostics executed ({} checks)", out.len()),
+        );
         out
     }
 }
@@ -201,7 +273,7 @@ pub fn run_diagnostics() -> Vec<DiagItem> {
 pub fn remove_conflicting_services() -> Result<Vec<String>, String> {
     #[cfg(not(windows))]
     {
-        return Err("Windows only".into());
+        Err("Windows only".into())
     }
     #[cfg(windows)]
     {
@@ -231,7 +303,11 @@ const DISCORD_CACHE_EDITIONS: &[(&str, &str, &str)] = &[
     ("Discord.exe", "Discord", "discord"),
     ("DiscordPTB.exe", "Discord PTB", "discordptb"),
     ("DiscordCanary.exe", "Discord Canary", "discordcanary"),
-    ("DiscordDevelopment.exe", "Discord Development", "discorddevelopment"),
+    (
+        "DiscordDevelopment.exe",
+        "Discord Development",
+        "discorddevelopment",
+    ),
 ];
 
 /// Clears Discord cache directories (Cache, Code Cache, GPUCache) for each
@@ -240,7 +316,7 @@ const DISCORD_CACHE_EDITIONS: &[(&str, &str, &str)] = &[
 pub fn clear_discord_cache() -> Result<Vec<String>, String> {
     #[cfg(not(windows))]
     {
-        return Err("Windows only".into());
+        Err("Windows only".into())
     }
     #[cfg(windows)]
     {

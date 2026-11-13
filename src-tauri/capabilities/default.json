@@ -16,21 +16,24 @@
     "core:window:allow-is-maximized",
     "core:window:allow-start-dragging",
     "core:window:allow-close",
-    "opener:default",
     {
       "identifier": "opener:allow-open-url",
       "allow": [
-        { "url": "https://*" },
-        { "url": "http://*" },
+        { "url": "https://github.com/*" },
+        { "url": "https://1.1.1.1/*" },
         { "url": "tg://*" }
       ]
     },
     {
       "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "**" }]
+      "allow": [
+        { "path": "C:\\EasyZapret\\logs" },
+        { "path": "C:\\EasyZapret\\logs\\**" },
+        { "path": "C:\\EasyZapret\\tmp\\**" }
+      ]
     },
     "clipboard-manager:allow-write-text",
     "updater:default",
-    "process:default"
+    "process:allow-restart"
   ]
 }

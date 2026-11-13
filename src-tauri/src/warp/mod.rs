@@ -67,14 +67,22 @@ fn detect_warp_cli() -> Option<String> {
                 return Some((*p).to_string());
             }
         }
+        // EasyZapret is always elevated. Falling back to a bare executable
+        // name would let an unprivileged user place warp-cli.exe earlier in
+        // PATH and gain administrator code execution.
+        return None;
     }
-    // Fall back to PATH lookup (covers non-default installs and dev machines).
-    let prog = if cfg!(windows) { "warp-cli.exe" } else { "warp-cli" };
-    let (ok, _) = run_capture(prog, &["--version"]);
-    if ok {
-        Some(prog.to_string())
-    } else {
-        None
+
+    #[cfg(not(windows))]
+    {
+        // Non-Windows builds are development-only and may use PATH.
+        let prog = "warp-cli";
+        let (ok, _) = run_capture(prog, &["--version"]);
+        if ok {
+            Some(prog.to_string())
+        } else {
+            None
+        }
     }
 }
 
@@ -175,7 +183,9 @@ fn normalize_mode(raw: &str) -> Option<String> {
 /// "Families Mode" and the "(user set)" provenance prefix.
 fn parse_mode(settings_out: &str) -> Option<String> {
     for line in settings_out.lines() {
-        let Some((key, value)) = line.split_once(':') else { continue };
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
         let key = key.rsplit(')').next().unwrap_or(key).trim().to_lowercase();
         let is_mode = key == "mode"
             || (key.ends_with("mode") && !key.contains("famil") && !key.contains("always"));
@@ -258,7 +268,10 @@ pub fn connect_with_state(state: &AppState) -> Result<(), String> {
         return Err(format!("warp connect failed: {}", out.trim()));
     }
     state.warp_active.store(true, Ordering::SeqCst);
-    logs::append("warp", &format!("connect requested: {}", out.trim().replace('\n', " ")));
+    logs::append(
+        "warp",
+        &format!("connect requested: {}", out.trim().replace('\n', " ")),
+    );
     Ok(())
 }
 
@@ -322,7 +335,10 @@ pub fn warp_set_mode(mode: String) -> Result<String, String> {
     // Read the setting back so the UI shows what the client really uses.
     let (_, settings_out) = run(&cli, &["settings"], &["settings"]);
     let applied = parse_mode(&settings_out).unwrap_or_else(|| mode.clone());
-    logs::append("warp", &format!("mode set to {mode} (client reports {applied})"));
+    logs::append(
+        "warp",
+        &format!("mode set to {mode} (client reports {applied})"),
+    );
     Ok(applied)
 }
 
@@ -344,12 +360,21 @@ mod tests {
     #[test]
     fn normalizes_warp_cli_mode_names() {
         assert_eq!(normalize_mode("Warp").as_deref(), Some("warp"));
-        assert_eq!(normalize_mode(" WarpWithDnsOverHttps ").as_deref(), Some("warp+doh"));
+        assert_eq!(
+            normalize_mode(" WarpWithDnsOverHttps ").as_deref(),
+            Some("warp+doh")
+        );
         assert_eq!(normalize_mode("DnsOverHttps").as_deref(), Some("doh"));
         assert_eq!(normalize_mode("warp+doh").as_deref(), Some("warp+doh"));
         assert_eq!(normalize_mode("doh").as_deref(), Some("doh"));
-        assert_eq!(normalize_mode("WarpWithDnsOverTls").as_deref(), Some("warp+dot"));
-        assert_eq!(normalize_mode("WarpProxy on port 40000").as_deref(), Some("proxy"));
+        assert_eq!(
+            normalize_mode("WarpWithDnsOverTls").as_deref(),
+            Some("warp+dot")
+        );
+        assert_eq!(
+            normalize_mode("WarpProxy on port 40000").as_deref(),
+            Some("proxy")
+        );
         assert_eq!(normalize_mode(""), None);
     }
 

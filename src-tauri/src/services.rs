@@ -24,15 +24,30 @@ pub struct Service {
 }
 
 const fn web(name: &'static str, url: &'static str) -> Target {
-    Target { name, url: Some(url), ping: None, bulk: false }
+    Target {
+        name,
+        url: Some(url),
+        ping: None,
+        bulk: false,
+    }
 }
 
 const fn web_bulk(name: &'static str, url: &'static str) -> Target {
-    Target { name, url: Some(url), ping: None, bulk: true }
+    Target {
+        name,
+        url: Some(url),
+        ping: None,
+        bulk: true,
+    }
 }
 
 const fn ping(name: &'static str, host: &'static str) -> Target {
-    Target { name, url: None, ping: Some(host), bulk: false }
+    Target {
+        name,
+        url: None,
+        ping: Some(host),
+        bulk: false,
+    }
 }
 
 pub const SERVICES: &[Service] = &[
@@ -139,8 +154,15 @@ const PROBE_TIMEOUT_SECS: u64 = 6;
 const MAX_PARALLEL: usize = 12;
 
 enum Outcome {
-    Http { name: &'static str, ok: bool, ms: u64 },
-    Bulk { name: &'static str, state: BulkState },
+    Http {
+        name: &'static str,
+        ok: bool,
+        ms: u64,
+    },
+    Bulk {
+        name: &'static str,
+        state: BulkState,
+    },
 }
 
 /// Probes every URL target of the given services (and, when `deep`, the bulk
@@ -164,9 +186,17 @@ pub async fn measure(ids: &[&str], deep: bool) -> Vec<ServiceHealth> {
     let mut jobs: Vec<Job> = Vec::new();
     for (si, svc) in selected.iter().enumerate() {
         for target in svc.targets.iter().filter(|t| t.url.is_some()) {
-            jobs.push(Job { service: si, target, kind: JobKind::Http });
+            jobs.push(Job {
+                service: si,
+                target,
+                kind: JobKind::Http,
+            });
             if deep && target.bulk && payload.is_some() {
-                jobs.push(Job { service: si, target, kind: JobKind::Bulk });
+                jobs.push(Job {
+                    service: si,
+                    target,
+                    kind: JobKind::Bulk,
+                });
             }
         }
     }
@@ -180,16 +210,25 @@ pub async fn measure(ids: &[&str], deep: bool) -> Vec<ServiceHealth> {
                 let outcome = match job.kind {
                     JobKind::Http => {
                         let p = probe::http(url, PROBE_TIMEOUT_SECS).await;
-                        Outcome::Http { name: job.target.name, ok: p.ok, ms: p.millis }
+                        Outcome::Http {
+                            name: job.target.name,
+                            ok: p.ok,
+                            ms: p.millis,
+                        }
                     }
                     JobKind::Bulk => {
                         let p = probe::bulk(
                             host_of(url),
-                            payload.as_deref().unwrap_or_else(|| std::path::Path::new("")),
+                            payload
+                                .as_deref()
+                                .unwrap_or_else(|| std::path::Path::new("")),
                             PROBE_TIMEOUT_SECS,
                         )
                         .await;
-                        Outcome::Bulk { name: job.target.name, state: p.state }
+                        Outcome::Bulk {
+                            name: job.target.name,
+                            state: p.state,
+                        }
                     }
                 };
                 (job.service, outcome)
@@ -235,9 +274,7 @@ pub async fn measure(ids: &[&str], deep: bool) -> Vec<ServiceHealth> {
                     },
                 }
             }
-            if ms_count > 0 {
-                health.avg_ms = Some(ms_sum / ms_count);
-            }
+            health.avg_ms = ms_sum.checked_div(ms_count);
             health.finish()
         })
         .collect()
@@ -256,8 +293,14 @@ pub async fn check_services(ids: Vec<String>) -> Vec<ServiceHealth> {
                 h.id,
                 h.ok,
                 h.total,
-                h.avg_ms.map(|ms| format!(", avg {ms} ms")).unwrap_or_default(),
-                if h.failed.is_empty() { String::new() } else { format!(", failed: {}", h.failed.join(", ")) },
+                h.avg_ms
+                    .map(|ms| format!(", avg {ms} ms"))
+                    .unwrap_or_default(),
+                if h.failed.is_empty() {
+                    String::new()
+                } else {
+                    format!(", failed: {}", h.failed.join(", "))
+                },
             ),
         );
     }

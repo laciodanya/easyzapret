@@ -1,11 +1,12 @@
 mod admin;
-mod autostart;
 mod autopilot;
+mod autostart;
 mod logs;
 mod paths;
 mod probe;
 mod services;
 mod settings;
+mod storage;
 mod tests;
 mod tg_proxy;
 mod tray;
@@ -81,6 +82,7 @@ struct FullStatus {
 
 struct StatusCache {
     zapret_service: Option<String>,
+    zapret_service_strategy: Option<String>,
     windivert_service: Option<String>,
     winws_running: bool,
     tg_running: bool,
@@ -89,6 +91,7 @@ struct StatusCache {
 
 static STATUS_CACHE: Mutex<StatusCache> = Mutex::new(StatusCache {
     zapret_service: None,
+    zapret_service_strategy: None,
     windivert_service: None,
     winws_running: false,
     tg_running: false,
@@ -109,13 +112,18 @@ fn refresh_status_cache(force: bool) {
     cache.winws_running = zapret::process::winws_running();
     cache.tg_running = tg_proxy::proxy_running();
     cache.zapret_service = zapret::service::query_service_state("zapret");
+    cache.zapret_service_strategy = if cache.zapret_service.is_some() {
+        zapret::service::service_strategy()
+    } else {
+        None
+    };
     cache.windivert_service = zapret::service::query_service_state("WinDivert");
     cache.fetched_at = Some(Instant::now());
 }
 
 fn maybe_refresh_tray(app: &AppHandle, state: &AppState) {
-    let busy = state.autopilot_busy.load(Ordering::SeqCst)
-        || state.tests_running.load(Ordering::SeqCst);
+    let busy =
+        state.autopilot_busy.load(Ordering::SeqCst) || state.tests_running.load(Ordering::SeqCst);
     if busy {
         return;
     }
@@ -157,7 +165,7 @@ fn get_status(app: AppHandle, state: State<'_, AppState>) -> FullStatus {
         current_strategy: state.current_strategy.lock().unwrap().clone(),
         service_installed: cache.zapret_service.is_some(),
         service_state: cache.zapret_service.clone(),
-        service_strategy: None,
+        service_strategy: cache.zapret_service_strategy.clone(),
         windivert_state: cache.windivert_service.clone(),
         windivert_sys_present: paths::zapret_bin_dir().join("WinDivert64.sys").exists(),
     };
@@ -233,6 +241,32 @@ fn refresh_tray(app: AppHandle) {
     tray::update_tray_now(&app);
 }
 
+fn fatal_startup_error(message: &str) {
+    eprintln!("EasyZapret cannot start safely: {message}");
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+
+        let text: Vec<u16> = std::ffi::OsStr::new(message)
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+        let title: Vec<u16> = std::ffi::OsStr::new("EasyZapret — startup blocked")
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+        unsafe {
+            MessageBoxW(
+                std::ptr::null_mut(),
+                text.as_ptr(),
+                title.as_ptr(),
+                MB_OK | MB_ICONERROR,
+            );
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(windows)]
@@ -243,11 +277,26 @@ pub fn run() {
             }
         }
     }
-    let _ = paths::ensure_dirs();
+    let storage_restore = match storage::prepare() {
+        Ok(plan) => plan,
+        Err(e) => {
+            fatal_startup_error(&format!(
+                "The protected data directory could not be verified or migrated. No components were started.\n\n{e}"
+            ));
+            return;
+        }
+    };
+    if let Err(e) = paths::ensure_dirs() {
+        fatal_startup_error(&format!(
+            "The protected data directory could not be prepared. No components were started.\n\n{e}"
+        ));
+        return;
+    }
     std::panic::set_hook(Box::new(|info| {
         logs::error("app", &format!("panic: {info}"));
     }));
     logs::session_start(env!("CARGO_PKG_VERSION"));
+    let storage_restore = Mutex::new(storage_restore);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -263,7 +312,21 @@ pub fn run() {
             }
         }))
         .manage(AppState::default())
-        .setup(|app| {
+        .setup(move |app| {
+            let restore_plan = storage_restore
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .take();
+            let state = app.state::<AppState>();
+            if let Err(error) = storage::restore_after_prepare(&state, restore_plan) {
+                logs::error(
+                    "app",
+                    &format!("failed to restore runtime after secure storage migration: {error}"),
+                );
+                fatal_startup_error(&format!(
+                    "EasyZapret secured its data directory, but could not restore the previous runtime state. Open the app and start the required components manually.\n\n{error}"
+                ));
+            }
             tray::setup_tray(app.handle())?;
             autostart::ensure_on_app_start();
             autostart::maybe_hide_on_start(app.handle());
@@ -289,7 +352,7 @@ pub fn run() {
             read_user_lists,
             save_user_list,
             settings::get_settings,
-            settings::save_settings,
+            settings::patch_settings,
             updates::install_component,
             updates::get_components_state,
             updates::check_updates,
@@ -308,6 +371,7 @@ pub fn run() {
             zapret::service::set_auto_update_check,
             zapret::service::update_ipset_list,
             zapret::service::check_hosts_file,
+            zapret::service::open_hosts_folder,
             zapret::diagnostics::run_diagnostics,
             zapret::diagnostics::remove_conflicting_services,
             zapret::diagnostics::clear_discord_cache,

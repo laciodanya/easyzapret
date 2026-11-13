@@ -1,25 +1,46 @@
 use std::io::BufRead;
 use std::process::Stdio;
 
-use sysinfo::{ProcessesToUpdate, System};
+use sysinfo::{Process, ProcessesToUpdate, System};
 use tauri::State;
 
 use crate::zapret::strategy;
 use crate::{logs, paths, AppState};
 
+fn normalized_exe(path: &std::path::Path) -> String {
+    path.to_string_lossy()
+        .trim_start_matches(r"\\?\")
+        .replace('/', "\\")
+        .to_ascii_lowercase()
+}
+
+fn is_managed_winws(process: &Process) -> bool {
+    if !process
+        .name()
+        .to_string_lossy()
+        .eq_ignore_ascii_case("winws.exe")
+    {
+        return false;
+    }
+    process
+        .exe()
+        .map(|exe| {
+            normalized_exe(exe) == normalized_exe(&paths::zapret_bin_dir().join("winws.exe"))
+        })
+        .unwrap_or(false)
+}
+
 pub fn winws_running() -> bool {
     let mut sys = System::new();
     sys.refresh_processes(ProcessesToUpdate::All, true);
-    sys.processes()
-        .values()
-        .any(|p| p.name().to_string_lossy().eq_ignore_ascii_case("winws.exe"))
+    sys.processes().values().any(is_managed_winws)
 }
 
 pub fn kill_all_winws() {
     let mut sys = System::new();
     sys.refresh_processes(ProcessesToUpdate::All, true);
     for p in sys.processes().values() {
-        if p.name().to_string_lossy().eq_ignore_ascii_case("winws.exe") {
+        if is_managed_winws(p) {
             p.kill();
         }
     }
@@ -32,7 +53,12 @@ pub fn force_kill_winws() {
     #[cfg(windows)]
     {
         for _ in 0..4 {
-            let _ = crate::util::run_capture("taskkill", &["/IM", "winws.exe", "/F"]);
+            let mut sys = System::new();
+            sys.refresh_processes(ProcessesToUpdate::All, true);
+            for process in sys.processes().values().filter(|p| is_managed_winws(p)) {
+                let pid = process.pid().as_u32().to_string();
+                let _ = crate::util::run_capture("taskkill", &["/PID", &pid, "/T", "/F"]);
+            }
             std::thread::sleep(std::time::Duration::from_millis(250));
             if !winws_running() {
                 return;
@@ -92,14 +118,20 @@ pub fn start_strategy(state: &AppState, bat_name: &str) -> Result<(), String> {
     // Pipe winws output into zapret.log for the in-app log viewer.
     if let Some(stdout) = child.stdout.take() {
         std::thread::spawn(move || {
-            for line in std::io::BufReader::new(stdout).lines().map_while(Result::ok) {
+            for line in std::io::BufReader::new(stdout)
+                .lines()
+                .map_while(Result::ok)
+            {
                 logs::append_raw("zapret", &line);
             }
         });
     }
     if let Some(stderr) = child.stderr.take() {
         std::thread::spawn(move || {
-            for line in std::io::BufReader::new(stderr).lines().map_while(Result::ok) {
+            for line in std::io::BufReader::new(stderr)
+                .lines()
+                .map_while(Result::ok)
+            {
                 logs::append_raw("zapret", &line);
             }
         });
@@ -136,11 +168,18 @@ pub fn stop(state: &AppState) {
 
 #[tauri::command]
 pub fn start_zapret(state: State<'_, AppState>, strategy_file: String) -> Result<(), String> {
+    if super::service::query_service_state("zapret").is_some() {
+        return super::service::start_installed_service();
+    }
     start_strategy(&state, &strategy_file)
 }
 
 #[tauri::command]
 pub fn stop_zapret(state: State<'_, AppState>) -> Result<(), String> {
-    stop(&state);
-    Ok(())
+    if super::service::query_service_state("zapret").is_some() {
+        super::service::stop_installed_service(&state)
+    } else {
+        stop(&state);
+        Ok(())
+    }
 }

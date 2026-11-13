@@ -41,7 +41,7 @@ export default function App() {
 
   useEffect(() => {
     init();
-    const cleanupAp = setupAutopilotListener(t);
+    const cleanupAp = setupAutopilotListener();
 
     let timer: ReturnType<typeof setTimeout>;
     const schedule = () => {

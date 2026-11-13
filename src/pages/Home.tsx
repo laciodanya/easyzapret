@@ -82,10 +82,11 @@ export function HomePage() {
   const tg = status?.tg;
   const warp = status?.warp;
   const zapretOn = !!(zapret?.running || zapret?.serviceState === "RUNNING");
-  const viaService = !zapret?.running && zapret?.serviceState === "RUNNING";
+  const viaService = !!zapret?.serviceInstalled;
   const strategyName = viaService
     ? (zapret?.serviceStrategy ?? t("home.noStrategy"))
-    : (settings?.selectedStrategy?.replace(/\.bat$/i, "") ?? t("home.noStrategy"));
+    : ((zapret?.currentStrategy ?? settings?.selectedStrategy)?.replace(/\.bat$/i, "") ??
+      t("home.noStrategy"));
 
   // Re-check reachability shortly after Zapret comes up, unless a recent result exists.
   useEffect(() => {
@@ -107,7 +108,7 @@ export function HomePage() {
     setZapretAction(value ? "starting" : "stopping");
     try {
       if (value) {
-        const strategy = settings?.selectedStrategy;
+        const strategy = zapret?.currentStrategy ?? settings?.selectedStrategy;
         if (!strategy) {
           setError(t("home.noStrategy"));
           setPickerOpen(true);

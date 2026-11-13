@@ -41,7 +41,7 @@ const QUIET_COMMANDS = new Set([
   "refresh_tray",
   "check_updates",
   "check_app_update",
-  "save_settings",
+  "patch_settings",
   "save_user_list",
   "get_log_report",
 ]);
@@ -76,7 +76,8 @@ export const api = {
   getStatus: () => call<FullStatus>("get_status"),
   refreshTray: () => call<void>("refresh_tray"),
   getSettings: () => call<Settings>("get_settings"),
-  saveSettings: (settings: Settings) => call<void>("save_settings", { settings }),
+  patchSettings: (patch: Record<string, unknown>) =>
+    call<Settings>("patch_settings", { patch }),
 
   // components / updates
   getComponentsState: () => call<ComponentsState>("get_components_state"),
@@ -102,6 +103,7 @@ export const api = {
   setAutoUpdateCheck: (enabled: boolean) => call<void>("set_auto_update_check", { enabled }),
   updateIpsetList: () => call<void>("update_ipset_list"),
   checkHostsFile: () => call<HostsCheck>("check_hosts_file"),
+  openHostsFolder: () => call<void>("open_hosts_folder"),
   runDiagnostics: () => call<DiagItem[]>("run_diagnostics"),
   removeConflictingServices: () => call<string[]>("remove_conflicting_services"),
   clearDiscordCache: () => call<string[]>("clear_discord_cache"),

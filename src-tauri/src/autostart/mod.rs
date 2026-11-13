@@ -17,7 +17,7 @@ use crate::{logs, paths, AppState};
 #[cfg(windows)]
 use crate::util::run_capture;
 #[cfg(windows)]
-use winreg::enums::{HKEY_CURRENT_USER, KEY_SET_VALUE};
+use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_SET_VALUE};
 #[cfg(windows)]
 use winreg::RegKey;
 
@@ -149,6 +149,12 @@ fn utf16_le_bom(text: &str) -> Vec<u8> {
 #[cfg(windows)]
 fn current_exe_path() -> Result<(String, String), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    if !cfg!(debug_assertions) && !exe_is_in_program_files(&exe) {
+        return Err(format!(
+            "refusing to register an elevated logon task for writable path '{}'; reinstall EasyZapret under Program Files",
+            exe.display()
+        ));
+    }
     let exe = exe_path_for_task(&exe);
     let workdir = std::path::Path::new(&exe)
         .parent()
@@ -156,6 +162,29 @@ fn current_exe_path() -> Result<(String, String), String> {
         .to_string_lossy()
         .into_owned();
     Ok((exe, workdir))
+}
+
+#[cfg(windows)]
+fn exe_is_in_program_files(exe: &std::path::Path) -> bool {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let Ok(key) =
+        hklm.open_subkey_with_flags(r"SOFTWARE\Microsoft\Windows\CurrentVersion", KEY_READ)
+    else {
+        return false;
+    };
+    let normalize = |path: &std::path::Path| {
+        path.to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_ascii_lowercase()
+    };
+    let exe = normalize(exe);
+    ["ProgramFilesDir", "ProgramFilesDir (x86)"]
+        .iter()
+        .filter_map(|name| key.get_value::<String, _>(*name).ok())
+        .map(|root| normalize(std::path::Path::new(&root)))
+        .any(|root| exe == root || exe.starts_with(&format!("{root}\\")))
 }
 
 #[cfg(windows)]
@@ -189,7 +218,10 @@ fn set_login_entry(enable: bool) -> Result<(), String> {
             return Err(format!("failed to register logon task: {out}"));
         }
     } else {
-        let _ = run_capture("schtasks", &["/Delete", "/TN", TASK_NAME, "/F"]);
+        let (ok, out) = run_capture("schtasks", &["/Delete", "/TN", TASK_NAME, "/F"]);
+        if !ok && login_entry_exists() {
+            return Err(format!("failed to remove logon task: {out}"));
+        }
     }
     Ok(())
 }
@@ -200,13 +232,23 @@ fn set_login_entry(_enable: bool) -> Result<(), String> {
 }
 
 pub fn apply_launch_at_login(enable: bool) -> Result<(), String> {
+    let previous = settings::load().autostart.launch_at_login;
     set_login_entry(enable)?;
-    let mut s = settings::load();
-    s.autostart.launch_at_login = enable;
-    settings::save(&s)?;
+    if let Err(save_error) = settings::update(|s| s.autostart.launch_at_login = enable) {
+        let rollback = set_login_entry(previous);
+        return Err(match rollback {
+            Ok(()) => format!("failed to save autostart setting; task change was rolled back: {save_error}"),
+            Err(rollback_error) => format!(
+                "failed to save autostart setting: {save_error}; task rollback also failed: {rollback_error}"
+            ),
+        });
+    }
     logs::append(
         "app",
-        &format!("autostart: launch at login {}", if enable { "on" } else { "off" }),
+        &format!(
+            "autostart: launch at login {}",
+            if enable { "on" } else { "off" }
+        ),
     );
     Ok(())
 }
@@ -216,19 +258,33 @@ pub fn apply_launch_at_login(enable: bool) -> Result<(), String> {
 pub fn ensure_on_app_start() {
     #[cfg(windows)]
     {
-        let _ = paths::ensure_dirs();
+        if let Err(e) = paths::ensure_dirs() {
+            logs::error(
+                "app",
+                &format!("autostart: protected directory unavailable — {e}"),
+            );
+            return;
+        }
         let marker = login_enable_marker();
-        let mut s = settings::load();
-        if !marker.exists() {
-            s.autostart.launch_at_login = true;
-            if let Err(e) = settings::save(&s) {
-                logs::append("app", &format!("autostart: failed to save default on — {e}"));
-            }
+        let s = if !marker.exists() {
+            let updated = match settings::update(|s| s.autostart.launch_at_login = true) {
+                Ok(settings) => settings,
+                Err(e) => {
+                    logs::append(
+                        "app",
+                        &format!("autostart: failed to save default on — {e}"),
+                    );
+                    settings::load()
+                }
+            };
             if let Err(e) = std::fs::write(&marker, "1") {
                 logs::append("app", &format!("autostart: failed to write marker — {e}"));
             }
             logs::append("app", "autostart: launch at login enabled for this version");
-        }
+            updated
+        } else {
+            settings::load()
+        };
         match set_login_entry(s.autostart.launch_at_login) {
             Ok(()) => {
                 if s.autostart.launch_at_login {
@@ -265,9 +321,18 @@ pub async fn run_boot_sequence(app: AppHandle) {
     logs::append("app", "autostart: boot sequence started");
 
     if wants_zapret && !crate::warp::zapret_running() {
-        let service_running =
-            crate::zapret::service::query_service_state("zapret").as_deref() == Some("RUNNING");
-        if !service_running {
+        let service_state = crate::zapret::service::query_service_state("zapret");
+        if service_state.is_some() {
+            if service_state.as_deref() != Some("RUNNING") {
+                match crate::zapret::service::start_installed_service() {
+                    Ok(()) => logs::append("app", "autostart: installed zapret service started"),
+                    Err(e) => logs::append(
+                        "app",
+                        &format!("autostart: installed zapret service failed — {e}"),
+                    ),
+                }
+            }
+        } else {
             let strategy = settings::load()
                 .selected_strategy
                 .unwrap_or_else(|| "general.bat".into());
@@ -280,7 +345,10 @@ pub async fn run_boot_sequence(app: AppHandle) {
             .await;
 
             match started {
-                Ok(Ok(())) => logs::append("app", &format!("autostart: zapret started ({strategy_log})")),
+                Ok(Ok(())) => logs::append(
+                    "app",
+                    &format!("autostart: zapret started ({strategy_log})"),
+                ),
                 Ok(Err(e)) => logs::append("app", &format!("autostart: zapret failed — {e}")),
                 Err(e) => logs::append("app", &format!("autostart: zapret task failed — {e}")),
             }

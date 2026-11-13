@@ -337,9 +337,7 @@ export function ServicePage() {
                     </Button>
                     <Button
                       size="sm"
-                      onClick={() =>
-                        openPath(hosts.hostsFile.replace(/\\hosts$/i, "")).catch(() => {})
-                      }
+                      onClick={() => void api.openHostsFolder().catch(() => {})}
                     >
                       {t("service.hostsOpenFolder")}
                     </Button>

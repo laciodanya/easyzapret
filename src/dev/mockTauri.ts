@@ -9,6 +9,24 @@ type Handler = (args: Record<string, unknown>) => unknown;
 
 type MockWindow = Window & { __TAURI_INTERNALS__?: unknown };
 
+function mergeObject(target: Record<string, unknown>, patch: Record<string, unknown>) {
+  for (const [key, value] of Object.entries(patch)) {
+    const current = target[key];
+    if (
+      value &&
+      current &&
+      typeof value === "object" &&
+      typeof current === "object" &&
+      !Array.isArray(value) &&
+      !Array.isArray(current)
+    ) {
+      mergeObject(current as Record<string, unknown>, value as Record<string, unknown>);
+    } else {
+      target[key] = value;
+    }
+  }
+}
+
 const STRATEGIES = [
   "general.bat",
   "general (ALT).bat",
@@ -101,8 +119,9 @@ function logText(name: string): string {
 const handlers: Record<string, Handler> = {
   get_app_info: () => ({ version: "0.6.0", dataDir: "C:\\EasyZapret", isAdmin: true, isWindows: true }),
   get_settings: () => state.settings,
-  save_settings: (a) => {
-    state.settings = a.settings as Record<string, unknown>;
+  patch_settings: (a) => {
+    mergeObject(state.settings, a.patch as Record<string, unknown>);
+    return state.settings;
   },
   get_components_state: () => ({
     zapretInstalled: true,
@@ -183,6 +202,7 @@ const handlers: Record<string, Handler> = {
     gameCurrent: "quic_initial_www_google_com.bin",
   }),
   check_hosts_file: () => ({ upToDate: true, tempFile: "", hostsFile: "" }),
+  open_hosts_folder: () => undefined,
   run_diagnostics: () => [
     { id: "bfe", status: "ok", detail: "" },
     { id: "proxy", status: "ok", detail: "" },

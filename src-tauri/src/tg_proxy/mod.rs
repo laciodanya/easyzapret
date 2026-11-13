@@ -1,9 +1,31 @@
 use std::path::PathBuf;
 
 use serde::Serialize;
-use sysinfo::{ProcessesToUpdate, System};
+use sysinfo::{Process, ProcessesToUpdate, System};
 
 use crate::{logs, paths};
+
+fn normalized_exe(path: &std::path::Path) -> String {
+    path.to_string_lossy()
+        .trim_start_matches(r"\\?\")
+        .replace('/', "\\")
+        .to_ascii_lowercase()
+}
+
+fn is_managed_proxy(process: &Process) -> bool {
+    if !process
+        .name()
+        .to_string_lossy()
+        .to_lowercase()
+        .starts_with("tgwsproxy")
+    {
+        return false;
+    }
+    process
+        .exe()
+        .map(|exe| normalized_exe(exe) == normalized_exe(&paths::tg_exe()))
+        .unwrap_or(false)
+}
 
 /// tg-ws-proxy stores its config in %APPDATA%/TgWsProxy (see TrayConfig.md).
 fn tg_config_dir() -> Option<PathBuf> {
@@ -39,16 +61,14 @@ pub fn own_log_file() -> Option<PathBuf> {
 pub fn proxy_running() -> bool {
     let mut sys = System::new();
     sys.refresh_processes(ProcessesToUpdate::All, true);
-    sys.processes()
-        .values()
-        .any(|p| p.name().to_string_lossy().to_lowercase().starts_with("tgwsproxy"))
+    sys.processes().values().any(is_managed_proxy)
 }
 
 pub fn kill_all() {
     let mut sys = System::new();
     sys.refresh_processes(ProcessesToUpdate::All, true);
     for p in sys.processes().values() {
-        if p.name().to_string_lossy().to_lowercase().starts_with("tgwsproxy") {
+        if is_managed_proxy(p) {
             p.kill();
         }
     }
@@ -100,12 +120,20 @@ fn build_tg_status(running: bool) -> TgStatus {
 
     // tg-ws-proxy stores the bare 32-hex secret; Telegram needs the "dd"
     // (padded MTProto) prefix both in links and when typed in by hand.
-    let link_host = if host == "0.0.0.0" || host.is_empty() { "127.0.0.1".to_string() } else { host.clone() };
+    let link_host = if host == "0.0.0.0" || host.is_empty() {
+        "127.0.0.1".to_string()
+    } else {
+        host.clone()
+    };
     let full_secret = secret.as_ref().map(|s| format!("dd{s}"));
     let (tg_link, share_link) = match &full_secret {
         Some(s) => (
-            Some(format!("tg://proxy?server={link_host}&port={port}&secret={s}")),
-            Some(format!("https://t.me/proxy?server={link_host}&port={port}&secret={s}")),
+            Some(format!(
+                "tg://proxy?server={link_host}&port={port}&secret={s}"
+            )),
+            Some(format!(
+                "https://t.me/proxy?server={link_host}&port={port}&secret={s}"
+            )),
         ),
         // Older tg-ws-proxy builds had no secret and spoke plain SOCKS5.
         None => (
@@ -139,7 +167,10 @@ pub fn start_tg() -> Result<(), String> {
         .current_dir(paths::tg_dir())
         .spawn()
         .map_err(|e| format!("failed to start TgWsProxy: {e}"))?;
-    logs::append("tgproxy", &format!("TgWsProxy started from {}", exe.display()));
+    logs::append(
+        "tgproxy",
+        &format!("TgWsProxy started from {}", exe.display()),
+    );
     Ok(())
 }
 
@@ -147,6 +178,9 @@ pub fn start_tg() -> Result<(), String> {
 pub fn stop_tg() -> Result<(), String> {
     let was_running = proxy_running();
     kill_all();
-    logs::append("tgproxy", &format!("TgWsProxy stopped (was running: {was_running})"));
+    logs::append(
+        "tgproxy",
+        &format!("TgWsProxy stopped (was running: {was_running})"),
+    );
     Ok(())
 }

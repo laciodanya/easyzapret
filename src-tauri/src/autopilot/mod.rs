@@ -266,12 +266,19 @@ impl Measurement {
 async fn measure(cfg: &AutopilotSettings) -> Measurement {
     let ids = enabled_service_ids(cfg);
     if ids.is_empty() {
-        return Measurement { health: 100, services: Vec::new() };
+        return Measurement {
+            health: 100,
+            services: Vec::new(),
+        };
     }
     let services = services::measure(&ids, cfg.deep_check).await;
     let ok: usize = services.iter().map(|s| s.ok).sum();
     let total: usize = services.iter().map(|s| s.total).sum();
-    let health = if total == 0 { 100 } else { ((ok as f64 / total as f64) * 100.0).round() as u32 };
+    let health = if total == 0 {
+        100
+    } else {
+        ((ok as f64 / total as f64) * 100.0).round() as u32
+    };
     Measurement { health, services }
 }
 
@@ -306,8 +313,14 @@ fn strategy_candidates(policy: &str, all: &[String]) -> Vec<String> {
     };
 
     match policy {
-        "speed" => push_unique(&mut ordered, pick(|l| l.starts_with("general") && !l.contains("fake tls"))),
-        "gaming" => push_unique(&mut ordered, pick(|l| l.contains("alt") && !l.contains("fake tls"))),
+        "speed" => push_unique(
+            &mut ordered,
+            pick(|l| l.starts_with("general") && !l.contains("fake tls")),
+        ),
+        "gaming" => push_unique(
+            &mut ordered,
+            pick(|l| l.contains("alt") && !l.contains("fake tls")),
+        ),
         _ => {
             push_unique(
                 &mut ordered,
@@ -322,7 +335,15 @@ fn strategy_candidates(policy: &str, all: &[String]) -> Vec<String> {
 
 fn switches_in_last_hour(persisted: &PersistedState) -> usize {
     let hour_ago = now_ms() - 3_600_000;
-    persisted.switch_timestamps_ms.iter().filter(|t| **t >= hour_ago).count()
+    persisted
+        .switch_timestamps_ms
+        .iter()
+        .filter(|t| **t >= hour_ago)
+        .count()
+}
+
+fn remaining_switch_budget(persisted: &PersistedState, maximum: u32) -> usize {
+    (maximum as usize).saturating_sub(switches_in_last_hour(persisted))
 }
 
 fn record_switch(persisted: &mut PersistedState) {
@@ -399,7 +420,9 @@ fn current_strategy(state: &AppState) -> String {
 }
 
 fn pretty(name: &str) -> String {
-    name.trim_end_matches(".bat").trim_end_matches(".BAT").to_string()
+    name.trim_end_matches(".bat")
+        .trim_end_matches(".BAT")
+        .to_string()
 }
 
 /// Stops winws and starts `next`. Runs on a blocking thread.
@@ -415,9 +438,7 @@ async fn switch_to(app: &AppHandle, next: &str) -> Result<(), String> {
     .await
     .map_err(|e| format!("switch task failed: {e}"))?;
     if result.is_ok() {
-        let mut s = settings::load();
-        s.selected_strategy = Some(next.to_string());
-        let _ = settings::save(&s);
+        let _ = settings::update(|s| s.selected_strategy = Some(next.to_string()));
     }
     result
 }
@@ -443,15 +464,24 @@ async fn recover(
         return false;
     }
     if crate::zapret::service::query_service_state("zapret").is_some() {
-        note("skipped", "Zapret runs as a Windows service, so the strategy cannot be changed automatically");
+        note(
+            "skipped",
+            "Zapret runs as a Windows service, so the strategy cannot be changed automatically",
+        );
         return false;
     }
     if !force && now_ms() < persisted.cooldown_until_ms {
         let mins = ((persisted.cooldown_until_ms - now_ms()) / 60_000).max(1);
-        note("skipped", format!("Cooling down after an unsuccessful recovery ({mins} min left)"));
+        note(
+            "skipped",
+            format!("Cooling down after an unsuccessful recovery ({mins} min left)"),
+        );
         return false;
     }
-    if switches_in_last_hour(persisted) >= cfg.max_switches_per_hour as usize {
+    let switch_budget = remaining_switch_budget(persisted, cfg.max_switches_per_hour);
+    // Keep one switch in reserve so a failed benchmark can always return to
+    // the original/best strategy without exceeding the configured limit.
+    if switch_budget < 2 {
         note("skipped", "Hourly limit of automatic switches reached");
         return false;
     }
@@ -472,6 +502,7 @@ async fn recover(
         candidates = order_by_history(candidates, persisted);
         candidates.truncate(MAX_ROTATE_TRIALS);
     }
+    candidates.truncate(switch_budget - 1);
     if candidates.is_empty() {
         let reason = if cfg.switch_mode == "rotate_custom" {
             "Your custom strategy list is empty or contains unknown files"
@@ -482,8 +513,6 @@ async fn recover(
         return false;
     }
 
-    record_switch(persisted);
-    save_persisted(persisted);
     set_cache(|c| {
         c.switching = true;
         c.checking = true;
@@ -511,9 +540,15 @@ async fn recover(
         if let Err(e) = switch_to(app, candidate).await {
             logs::warn("autopilot", &format!("{candidate}: could not start — {e}"));
             mark_result(persisted, candidate, 0, false);
-            trials.push(Trial { strategy: candidate.clone(), health: 0, healthy: false });
+            trials.push(Trial {
+                strategy: candidate.clone(),
+                health: 0,
+                healthy: false,
+            });
             continue;
         }
+        record_switch(persisted);
+        save_persisted(persisted);
         tokio::time::sleep(Duration::from_secs(WARMUP_SECS)).await;
 
         let running = tokio::task::spawn_blocking(crate::zapret::process::winws_running)
@@ -522,15 +557,28 @@ async fn recover(
         let m = if running {
             measure(cfg).await
         } else {
-            Measurement { health: 0, services: Vec::new() }
+            Measurement {
+                health: 0,
+                services: Vec::new(),
+            }
         };
         let healthy = running && !m.degraded(cfg);
         logs::append(
             "autopilot",
-            &format!("{}: {}% [{}] -> {}", pretty(candidate), m.health, m.summary(), if healthy { "healthy" } else { "not enough" }),
+            &format!(
+                "{}: {}% [{}] -> {}",
+                pretty(candidate),
+                m.health,
+                m.summary(),
+                if healthy { "healthy" } else { "not enough" }
+            ),
         );
         mark_result(persisted, candidate, m.health, healthy);
-        trials.push(Trial { strategy: candidate.clone(), health: m.health, healthy });
+        trials.push(Trial {
+            strategy: candidate.clone(),
+            health: m.health,
+            healthy,
+        });
 
         if healthy && !best_mode {
             break;
@@ -548,13 +596,26 @@ async fn recover(
         .max_by_key(|t| t.health)
         .or_else(|| trials.iter().rev().max_by_key(|t| t.health))
         .map(|t| (t.strategy.clone(), t.health, t.healthy));
-    let (winner_name, winner_health, winner_healthy) = winner.unwrap_or((from.to_string(), before.health, false));
+    let (winner_name, winner_health, winner_healthy) =
+        winner.unwrap_or((from.to_string(), before.health, false));
+    let changed = !winner_name.eq_ignore_ascii_case(from);
+    let mut winner_active = true;
 
     let running_now = current_strategy(&app.state::<AppState>());
     let still_running = crate::zapret::process::winws_running();
     if !winner_name.eq_ignore_ascii_case(&running_now) || !still_running {
-        if let Err(e) = switch_to(app, &winner_name).await {
-            note("failed", format!("Could not return to {}: {e}", pretty(&winner_name)));
+        match switch_to(app, &winner_name).await {
+            Ok(()) => {
+                record_switch(persisted);
+                save_persisted(persisted);
+            }
+            Err(e) => {
+                winner_active = false;
+                note(
+                    "failed",
+                    format!("Could not return to {}: {e}", pretty(&winner_name)),
+                );
+            }
         }
     }
 
@@ -563,13 +624,30 @@ async fn recover(
         c.checking = false;
     });
 
-    if winner_healthy {
+    if winner_active && changed {
+        emit_toast(
+            app,
+            AutopilotEvent {
+                kind: "strategy_changed".into(),
+                message: winner_name.clone(),
+                from_strategy: Some(from.into()),
+                to_strategy: Some(winner_name.clone()),
+                health_percent: Some(winner_health),
+            },
+        );
+    }
+
+    if winner_healthy && winner_active {
         persisted.cooldown_until_ms = 0;
         save_persisted(persisted);
-        let changed = !winner_name.eq_ignore_ascii_case(from);
         note(
             if changed { "switch" } else { "recovered" },
-            format!("{} → {} ({}%)", pretty(from), pretty(&winner_name), winner_health),
+            format!(
+                "{} → {} ({}%)",
+                pretty(from),
+                pretty(&winner_name),
+                winner_health
+            ),
         );
         if changed && cfg.notify_on_switch {
             emit_toast(
@@ -589,11 +667,18 @@ async fn recover(
         save_persisted(persisted);
         note(
             "failed",
-            format!(
-                "No strategy reached the target. Kept {} ({}%). Next automatic attempt in ~20 min",
-                pretty(&winner_name),
-                winner_health
-            ),
+            if winner_active {
+                format!(
+                    "No strategy reached the target. Kept {} ({}%). Next automatic attempt in ~20 min",
+                    pretty(&winner_name),
+                    winner_health
+                )
+            } else {
+                format!(
+                    "Could not activate {}. Next automatic attempt in ~20 min",
+                    pretty(&winner_name)
+                )
+            },
         );
         if cfg.notify_on_switch {
             emit_toast(
@@ -602,7 +687,7 @@ async fn recover(
                     kind: "no_fix".into(),
                     message: pretty(&winner_name),
                     from_strategy: Some(from.into()),
-                    to_strategy: Some(winner_name),
+                    to_strategy: winner_active.then_some(winner_name),
                     health_percent: Some(winner_health),
                 },
             );
@@ -628,7 +713,10 @@ struct AutopilotBusyGuard(AppHandle);
 
 impl Drop for AutopilotBusyGuard {
     fn drop(&mut self) {
-        self.0.state::<AppState>().autopilot_busy.store(false, Ordering::SeqCst);
+        self.0
+            .state::<AppState>()
+            .autopilot_busy
+            .store(false, Ordering::SeqCst);
         set_cache(|c| {
             c.checking = false;
             c.switching = false;
@@ -680,7 +768,11 @@ pub async fn run_health_cycle(app: AppHandle, force: bool) -> Option<u32> {
     if m.degraded(&cfg) {
         logs::warn(
             "autopilot",
-            &format!("first check: {}% [{}] — re-checking in {CONFIRM_DELAY_SECS}s", m.health, m.summary()),
+            &format!(
+                "first check: {}% [{}] — re-checking in {CONFIRM_DELAY_SECS}s",
+                m.health,
+                m.summary()
+            ),
         );
         tokio::time::sleep(Duration::from_secs(CONFIRM_DELAY_SECS)).await;
         m = measure(&cfg).await;
@@ -692,25 +784,42 @@ pub async fn run_health_cycle(app: AppHandle, force: bool) -> Option<u32> {
         c.last_health_percent = Some(m.health);
         c.services = m.services.clone();
     });
-    logs::append("autopilot", &format!("health {}% [{}] · strategy {}", m.health, m.summary(), pretty(&strategy)));
+    logs::append(
+        "autopilot",
+        &format!(
+            "health {}% [{}] · strategy {}",
+            m.health,
+            m.summary(),
+            pretty(&strategy)
+        ),
+    );
 
     let mut persisted = load_persisted();
     let mut next_in = interval;
 
     if !m.degraded(&cfg) {
         set_cache(|c| c.internet_ok = Some(true));
-        note("check_ok", format!("Everything works: {}% ({})", m.health, m.summary()));
+        note(
+            "check_ok",
+            format!("Everything works: {}% ({})", m.health, m.summary()),
+        );
         if zapret_on {
             mark_result(&mut persisted, &strategy, m.health, true);
             save_persisted(&persisted);
         }
     } else if !crate::probe::internet_reachable().await {
         set_cache(|c| c.internet_ok = Some(false));
-        note("offline", "No internet connection — strategies left unchanged");
+        note(
+            "offline",
+            "No internet connection — strategies left unchanged",
+        );
         next_in = OFFLINE_RETRY_MINUTES;
     } else {
         set_cache(|c| c.internet_ok = Some(true));
-        note("degraded", format!("Access degraded: {}% — {}", m.health, m.failing()));
+        note(
+            "degraded",
+            format!("Access degraded: {}% — {}", m.health, m.failing()),
+        );
         if cfg.notify_on_degraded {
             emit_toast(
                 &app,
@@ -725,8 +834,8 @@ pub async fn run_health_cycle(app: AppHandle, force: bool) -> Option<u32> {
         }
         if zapret_on {
             let fixed = recover(&app, &cfg, &mut persisted, &strategy, &m, force).await;
-            maybe_enable_modules(&state, &cfg).await;
             if !fixed {
+                maybe_enable_modules(&state, &cfg).await;
                 next_in = interval.min(UNRESOLVED_RETRY_MINUTES);
             }
         }
@@ -795,7 +904,12 @@ mod tests {
 
     #[test]
     fn stability_policy_starts_with_general() {
-        let all = names(&["general (ALT2).bat", "general.bat", "general (ALT).bat", "general (SIMPLE FAKE).bat"]);
+        let all = names(&[
+            "general (ALT2).bat",
+            "general.bat",
+            "general (ALT).bat",
+            "general (SIMPLE FAKE).bat",
+        ]);
         let ordered = strategy_candidates("stability", &all);
         assert_eq!(ordered[0], "general.bat");
         assert_eq!(ordered.len(), all.len());
@@ -806,14 +920,41 @@ mod tests {
         let mut persisted = PersistedState::default();
         persisted.stats.insert(
             "b.bat".into(),
-            StrategyStat { last_ok_ms: now_ms() - 1000, last_fail_ms: 0, ..Default::default() },
+            StrategyStat {
+                last_ok_ms: now_ms() - 1000,
+                last_fail_ms: 0,
+                ..Default::default()
+            },
         );
         persisted.stats.insert(
             "a.bat".into(),
-            StrategyStat { last_fail_ms: now_ms() - 1000, last_ok_ms: 0, ..Default::default() },
+            StrategyStat {
+                last_fail_ms: now_ms() - 1000,
+                last_ok_ms: 0,
+                ..Default::default()
+            },
         );
         let ordered = order_by_history(names(&["a.bat", "c.bat", "b.bat"]), &persisted);
         assert_eq!(ordered, names(&["b.bat", "c.bat", "a.bat"]));
+    }
+
+    #[test]
+    fn switch_budget_counts_each_recent_transition() {
+        let now = now_ms();
+        let mut persisted = PersistedState {
+            switch_timestamps_ms: vec![now - 1_000, now - 7_200_000],
+            ..Default::default()
+        };
+        assert_eq!(switches_in_last_hour(&persisted), 1);
+        assert_eq!(remaining_switch_budget(&persisted, 3), 2);
+
+        record_switch(&mut persisted);
+        assert_eq!(switches_in_last_hour(&persisted), 2);
+        assert_eq!(remaining_switch_budget(&persisted, 3), 1);
+        assert!(persisted
+            .switch_timestamps_ms
+            .iter()
+            .all(|t| *t >= now - 3_600_000));
     }
 
     #[test]
@@ -828,11 +969,20 @@ mod tests {
             failed: Vec::new(),
             state: if ok == 0 { "down".into() } else { "ok".into() },
         };
-        let fine = Measurement { health: 90, services: vec![svc("discord", 5, 5), svc("youtube", 4, 5)] };
+        let fine = Measurement {
+            health: 90,
+            services: vec![svc("discord", 5, 5), svc("youtube", 4, 5)],
+        };
         assert!(!fine.degraded(&cfg));
-        let one_down = Measurement { health: 75, services: vec![svc("discord", 0, 5), svc("youtube", 5, 5)] };
+        let one_down = Measurement {
+            health: 75,
+            services: vec![svc("discord", 0, 5), svc("youtube", 5, 5)],
+        };
         assert!(one_down.degraded(&cfg));
-        let low = Measurement { health: 30, services: vec![svc("discord", 1, 5)] };
+        let low = Measurement {
+            health: 30,
+            services: vec![svc("discord", 1, 5)],
+        };
         assert!(low.degraded(&cfg));
     }
 }

@@ -28,7 +28,7 @@ pub fn query_service_state(name: &str) -> Option<String> {
     #[cfg(not(windows))]
     {
         let _ = name;
-        return None;
+        None
     }
     #[cfg(windows)]
     {
@@ -52,7 +52,7 @@ pub fn query_service_state(name: &str) -> Option<String> {
 fn registry_strategy() -> Option<String> {
     #[cfg(not(windows))]
     {
-        return None;
+        None
     }
     #[cfg(windows)]
     {
@@ -83,6 +83,47 @@ fn registry_strategy() -> Option<String> {
     }
 }
 
+pub fn service_strategy() -> Option<String> {
+    registry_strategy()
+}
+
+/// Starts an already installed zapret service without recreating it or
+/// changing the strategy stored in its service command line.
+pub fn start_installed_service() -> Result<(), String> {
+    #[cfg(not(windows))]
+    {
+        Err("Windows only".into())
+    }
+    #[cfg(windows)]
+    {
+        let Some(state) = query_service_state("zapret") else {
+            return Err("zapret service is not installed".into());
+        };
+        if state == "RUNNING" {
+            return Ok(());
+        }
+        tcp_enable();
+        let (ok, out) = run_capture("sc", &["start", "zapret"]);
+        if !ok && query_service_state("zapret").as_deref() != Some("RUNNING") {
+            return Err(format!("failed to start zapret service: {}", out.trim()));
+        }
+        logs::append("zapret", "Installed zapret service started");
+        Ok(())
+    }
+}
+
+/// Stops the installed service and its driver while keeping the service
+/// registration intact, so the main power button can start it again later.
+pub fn stop_installed_service(state: &AppState) -> Result<(), String> {
+    ensure_zapret_released(state, false);
+    if query_service_state("zapret").as_deref() == Some("RUNNING") {
+        Err("zapret service did not stop".into())
+    } else {
+        logs::append("zapret", "Installed zapret service stopped");
+        Ok(())
+    }
+}
+
 #[tauri::command]
 pub fn zapret_status(state: State<'_, AppState>) -> ZapretStatus {
     let service_state = query_service_state("zapret");
@@ -103,11 +144,14 @@ pub fn tcp_enable() {
     #[cfg(windows)]
     {
         let (_, out) = run_capture("netsh", &["interface", "tcp", "show", "global"]);
-        let enabled = out
-            .lines()
-            .any(|l| l.to_lowercase().contains("timestamps") && l.to_lowercase().contains("enabled"));
+        let enabled = out.lines().any(|l| {
+            l.to_lowercase().contains("timestamps") && l.to_lowercase().contains("enabled")
+        });
         if !enabled {
-            let _ = run_capture("netsh", &["interface", "tcp", "set", "global", "timestamps=enabled"]);
+            let _ = run_capture(
+                "netsh",
+                &["interface", "tcp", "set", "global", "timestamps=enabled"],
+            );
         }
     }
 }
@@ -119,7 +163,7 @@ pub fn install_zapret_service(strategy_file: String) -> Result<(), String> {
     #[cfg(not(windows))]
     {
         let _ = strategy_file;
-        return Err("Windows only".into());
+        Err("Windows only".into())
     }
     #[cfg(windows)]
     {
@@ -128,7 +172,11 @@ pub fn install_zapret_service(strategy_file: String) -> Result<(), String> {
         tcp_enable();
 
         let exe = paths::zapret_bin_dir().join("winws.exe");
-        let bin_path = format!("\"{}\" {}", exe.display(), strategy::service_args_string(&args));
+        let bin_path = format!(
+            "\"{}\" {}",
+            exe.display(),
+            strategy::service_args_string(&args)
+        );
 
         let _ = run_capture("net", &["stop", "zapret"]);
         let _ = run_capture("sc", &["delete", "zapret"]);
@@ -136,16 +184,23 @@ pub fn install_zapret_service(strategy_file: String) -> Result<(), String> {
         let (ok, out) = run_capture(
             "sc",
             &[
-                "create", "zapret",
-                "binPath=", &bin_path,
-                "DisplayName=", "zapret",
-                "start=", "auto",
+                "create",
+                "zapret",
+                "binPath=",
+                &bin_path,
+                "DisplayName=",
+                "zapret",
+                "start=",
+                "auto",
             ],
         );
         if !ok {
             return Err(format!("sc create failed: {}", out.trim()));
         }
-        let _ = run_capture("sc", &["description", "zapret", "Zapret DPI bypass software"]);
+        let _ = run_capture(
+            "sc",
+            &["description", "zapret", "Zapret DPI bypass software"],
+        );
         let (started, start_out) = run_capture("sc", &["start", "zapret"]);
 
         let strategy_name = strategy_file.trim_end_matches(".bat");
@@ -154,29 +209,28 @@ pub fn install_zapret_service(strategy_file: String) -> Result<(), String> {
             &[
                 "add",
                 r"HKLM\System\CurrentControlSet\Services\zapret",
-                "/v", "zapret-discord-youtube",
-                "/t", "REG_SZ",
-                "/d", strategy_name,
+                "/v",
+                "zapret-discord-youtube",
+                "/t",
+                "REG_SZ",
+                "/d",
+                strategy_name,
                 "/f",
             ],
         );
 
-        logs::append("zapret", &format!("Service installed with strategy: {strategy_name}"));
+        logs::append(
+            "zapret",
+            &format!("Service installed with strategy: {strategy_name}"),
+        );
         if !started {
-            return Err(format!("service created but failed to start: {}", start_out.trim()));
+            return Err(format!(
+                "service created but failed to start: {}",
+                start_out.trim()
+            ));
         }
         Ok(())
     }
-}
-
-fn registry_strategy_bat() -> Option<String> {
-    registry_strategy().map(|s| {
-        if s.to_ascii_lowercase().ends_with(".bat") {
-            s
-        } else {
-            format!("{s}.bat")
-        }
-    })
 }
 
 /// Kills winws and stops WinDivert. When `delete_services` is true, also
@@ -225,15 +279,10 @@ pub struct ZapretRunState {
     /// Only consulted on Windows.
     #[cfg_attr(not(windows), allow(dead_code))]
     pub service_was_running: bool,
-    /// Strategy bat for reinstalling the service after an update.
-    #[cfg_attr(not(windows), allow(dead_code))]
-    pub service_strategy: Option<String>,
 }
 
 /// Fully stops zapret so its files can be replaced during an update.
 pub fn stop_for_update(state: &AppState) -> ZapretRunState {
-    let manual_strategy = state.current_strategy.lock().unwrap().clone();
-
     #[cfg(windows)]
     let service_installed = query_service_state("zapret").is_some();
     #[cfg(not(windows))]
@@ -244,43 +293,78 @@ pub fn stop_for_update(state: &AppState) -> ZapretRunState {
     #[cfg(not(windows))]
     let service_was_running = false;
 
-    let service_strategy = registry_strategy_bat();
+    let manual_was_running = !service_installed && super::process::winws_running();
+    let manual_strategy = if manual_was_running {
+        state
+            .current_strategy
+            .lock()
+            .unwrap()
+            .clone()
+            .or_else(|| crate::settings::load().selected_strategy)
+            .or_else(|| Some("general.bat".into()))
+    } else {
+        None
+    };
 
-    ensure_zapret_released(state, true);
-    logs::append("zapret", "Stopped zapret for update (processes and services removed)");
+    // The service points at the same C:\\EasyZapret path after the swap, so
+    // deleting and recreating it only adds failure modes and can destroy a
+    // service installed outside EasyZapret. Stopping it is sufficient.
+    ensure_zapret_released(state, false);
+    logs::append(
+        "zapret",
+        "Stopped zapret for update (service registration preserved)",
+    );
     ZapretRunState {
         manual_strategy,
         service_installed,
         service_was_running,
-        service_strategy,
     }
 }
 
 /// Restores the zapret run state captured by `stop_for_update` after the
-/// files have been replaced. Best-effort: failures are ignored.
-pub fn restore_after_update(state: &AppState, prev: &ZapretRunState) {
+/// files have been replaced. The updater keeps its rollback tree until this
+/// succeeds.
+pub fn restore_after_update(state: &AppState, prev: &ZapretRunState) -> Result<(), String> {
     #[cfg(windows)]
     {
         if prev.service_installed {
-            if let Some(ref bat) = prev.service_strategy {
-                match install_zapret_service(bat.clone()) {
-                    Ok(()) => {
-                        if !prev.service_was_running {
-                            let _ = run_capture("net", &["stop", "zapret"]);
-                        }
-                        logs::append("zapret", "Service reinstalled after update");
-                    }
-                    Err(e) => logs::append("zapret", &format!("Service reinstall after update failed: {e}")),
+            if prev.service_was_running {
+                start_installed_service()
+                    .map_err(|e| format!("service restart after update failed: {e}"))?;
+                wait_for_stable_winws()?;
+                if query_service_state("zapret").as_deref() != Some("RUNNING") {
+                    return Err("zapret service stopped again after the update".into());
                 }
-                return;
+                logs::append("zapret", "Service restarted after update");
             }
+            return Ok(());
         }
     }
     if let Some(bat) = &prev.manual_strategy {
-        if super::process::start_strategy(state, bat).is_ok() {
-            logs::append("zapret", &format!("Restarted strategy after update: {bat}"));
-        }
+        super::process::start_strategy(state, bat)
+            .map_err(|e| format!("strategy restart after update failed: {e}"))?;
+        wait_for_stable_winws()
+            .map_err(|e| format!("strategy '{bat}' did not stay running: {e}"))?;
+        logs::append("zapret", &format!("Restarted strategy after update: {bat}"));
     }
+    Ok(())
+}
+
+fn wait_for_stable_winws() -> Result<(), String> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(6);
+    let mut running_since: Option<std::time::Instant> = None;
+    while std::time::Instant::now() < deadline {
+        if super::process::winws_running() {
+            let since = running_since.get_or_insert_with(std::time::Instant::now);
+            if since.elapsed() >= std::time::Duration::from_secs(4) {
+                return Ok(());
+            }
+        } else if running_since.is_some() {
+            return Err("winws.exe exited during the stability check".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    Err("winws.exe did not become stable within 6 seconds".into())
 }
 
 /// Remove Services: stops/deletes zapret, kills winws, removes WinDivert(14).
@@ -289,12 +373,15 @@ pub fn remove_zapret_services(state: State<'_, AppState>) -> Result<(), String> 
     #[cfg(not(windows))]
     {
         let _ = state;
-        return Err("Windows only".into());
+        Err("Windows only".into())
     }
     #[cfg(windows)]
     {
         ensure_zapret_released(&state, true);
-        logs::append("zapret", "Services removed (zapret, WinDivert, WinDivert14)");
+        logs::append(
+            "zapret",
+            "Services removed (zapret, WinDivert, WinDivert14)",
+        );
         Ok(())
     }
 }
@@ -330,14 +417,19 @@ pub fn get_service_settings() -> ServiceSettings {
     ServiceSettings {
         game_filter_mode: strategy::game_filter().mode,
         ipset_mode: ipset_mode(),
-        auto_update_check: paths::zapret_utils_dir().join("check_updates.enabled").exists(),
+        auto_update_check: paths::zapret_utils_dir()
+            .join("check_updates.enabled")
+            .exists(),
     }
 }
 
 #[tauri::command]
 pub fn set_game_filter(mode: String) -> Result<(), String> {
     strategy::set_game_filter_mode(&mode)?;
-    logs::append("zapret", &format!("Game filter -> {mode} (restart zapret to apply)"));
+    logs::append(
+        "zapret",
+        &format!("Game filter -> {mode} (restart zapret to apply)"),
+    );
     Ok(())
 }
 
@@ -377,7 +469,10 @@ pub fn set_ipset_mode(mode: String) -> Result<(), String> {
         }
         _ => return Err(format!("unknown ipset mode: {mode}")),
     }
-    logs::append("zapret", &format!("IPSet filter -> {mode} (restart zapret to apply)"));
+    logs::append(
+        "zapret",
+        &format!("IPSet filter -> {mode} (restart zapret to apply)"),
+    );
     Ok(())
 }
 
@@ -455,12 +550,14 @@ pub async fn check_hosts_file() -> Result<HostsCheck, String> {
     std::fs::create_dir_all(paths::tmp_dir()).map_err(|e| e.to_string())?;
     std::fs::write(&temp_file, &body).map_err(|e| e.to_string())?;
 
-    let hosts_path = if cfg!(windows) {
-        let root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
-        format!("{root}\\System32\\drivers\\etc\\hosts")
-    } else {
-        "/etc/hosts".to_string()
-    };
+    #[cfg(windows)]
+    let hosts_path = crate::util::windows_directory()
+        .map_err(|e| format!("cannot resolve Windows directory: {e}"))?
+        .join("System32/drivers/etc/hosts")
+        .to_string_lossy()
+        .into_owned();
+    #[cfg(not(windows))]
+    let hosts_path = "/etc/hosts".to_string();
     let hosts = std::fs::read_to_string(&hosts_path).unwrap_or_default();
 
     let lines: Vec<&str> = body.lines().filter(|l| !l.trim().is_empty()).collect();
@@ -473,6 +570,26 @@ pub async fn check_hosts_file() -> Result<HostsCheck, String> {
         temp_file: temp_file.to_string_lossy().to_string(),
         hosts_file: hosts_path,
     })
+}
+
+#[tauri::command]
+pub fn open_hosts_folder() -> Result<(), String> {
+    #[cfg(not(windows))]
+    {
+        Err("Windows only".into())
+    }
+    #[cfg(windows)]
+    {
+        let windows = crate::util::windows_directory()
+            .map_err(|e| format!("cannot resolve Windows directory: {e}"))?;
+        let explorer = windows.join("explorer.exe");
+        let folder = windows.join("System32/drivers/etc");
+        crate::util::hidden_command(&explorer.to_string_lossy())
+            .arg(folder)
+            .spawn()
+            .map_err(|e| format!("failed to open hosts directory: {e}"))?;
+        Ok(())
+    }
 }
 
 const ACTIVE_DISCORD_FAKE: &str = "ACTIVE_DISCORD_UDP.bin";
@@ -514,11 +631,15 @@ fn list_fake_bin_names(bin: &std::path::Path) -> Result<Vec<String>, String> {
         }
         names.push(stem.to_string());
     }
-    names.sort_by(|a, b| a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase()));
+    names.sort_by_key(|a| a.to_ascii_lowercase());
     Ok(names)
 }
 
-fn match_active_fake(bin: &std::path::Path, active_name: &str, candidates: &[String]) -> Option<String> {
+fn match_active_fake(
+    bin: &std::path::Path,
+    active_name: &str,
+    candidates: &[String],
+) -> Option<String> {
     let active = bin.join(active_name);
     let Ok(active_bytes) = std::fs::read(&active) else {
         return None;
@@ -555,7 +676,10 @@ pub fn get_active_fakes() -> Result<ActiveFakesStatus, String> {
 pub fn set_active_fake(kind: String, file: String) -> Result<ActiveFakesStatus, String> {
     let bin = paths::zapret_bin_dir();
     let files = list_fake_bin_names(&bin)?;
-    let stem = file.trim().trim_end_matches(".bin").trim_end_matches(".BIN");
+    let stem = file
+        .trim()
+        .trim_end_matches(".bin")
+        .trim_end_matches(".BIN");
     if stem.is_empty() || !files.iter().any(|f| f.eq_ignore_ascii_case(stem)) {
         return Err("invalid fake file".into());
     }

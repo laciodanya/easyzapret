@@ -70,7 +70,7 @@ fn detect_warp_cli() -> Option<String> {
         // EasyZapret is always elevated. Falling back to a bare executable
         // name would let an unprivileged user place warp-cli.exe earlier in
         // PATH and gain administrator code execution.
-        return None;
+        None
     }
 
     #[cfg(not(windows))]

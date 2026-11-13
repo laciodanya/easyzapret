@@ -560,7 +560,7 @@ fn temporary_path(label: &str) -> PathBuf {
 
 fn remove_temporary(path: &Path) {
     if path.is_dir() {
-        let _ = std::fs::remove_dir_all(path);
+        let _ = crate::util::force_remove_dir(path);
     } else {
         let _ = std::fs::remove_file(path);
     }
@@ -651,7 +651,7 @@ fn schedule_staged_cleanup(path: std::path::PathBuf) {
             if i > 0 {
                 std::thread::sleep(std::time::Duration::from_secs(2));
             }
-            if std::fs::remove_dir_all(&path).is_ok() || !path.exists() {
+            if crate::util::force_remove_dir(&path).is_ok() || !path.exists() {
                 logs::append(
                     "app",
                     &format!("Removed staged zapret dir {}", path.display()),

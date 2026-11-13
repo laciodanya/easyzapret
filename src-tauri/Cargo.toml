@@ -25,7 +25,7 @@ tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 futures-util = "0.3"
 zip = "2"
-sysinfo = "0.33"
+sysinfo = "0.40"
 chrono = "0.4"
 dirs = "5"
 rand = "0.8"

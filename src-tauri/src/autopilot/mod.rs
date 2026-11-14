@@ -1020,7 +1020,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let ordered = order_by_history(names(&["a.bat", "c.bat", "b.bat"]), &persisted);
+        let ordered = order_by_history(names(&["a.bat", "c.bat", "b.bat"]), &persisted, None);
         assert_eq!(ordered, names(&["b.bat", "c.bat", "a.bat"]));
     }
 

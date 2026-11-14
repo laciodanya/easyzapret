@@ -71,7 +71,7 @@ function FakeRow({
 
 export function ServicePage() {
   const { t } = useTranslation();
-  const { status, settings, refreshStatus } = useStore();
+  const { status, settings, refreshStatus, checkUpdates } = useStore();
   const [svc, setSvc] = useState<ServiceSettings | null>(null);
   const [fakes, setFakes] = useState<ActiveFakesStatus | null>(null);
   const [discordPick, setDiscordPick] = useState("");
@@ -305,7 +305,14 @@ export function ServicePage() {
           <Button
             disabled={busy !== null}
             onClick={() =>
-              void run("ipsetupd", () => api.updateIpsetList(), t("service.updateIpsetDone"))
+              void run(
+                "ipsetupd",
+                async () => {
+                  await api.updateIpsetList();
+                  await checkUpdates();
+                },
+                t("service.updateIpsetDone"),
+              )
             }
           >
             {busy === "ipsetupd" && <Spinner size={14} />}
@@ -332,6 +339,28 @@ export function ServicePage() {
               action={
                 !hosts.upToDate && (
                   <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={busy !== null}
+                      onClick={() =>
+                        void run("hosts-update", async () => {
+                          const result = await api.updateHostsFile();
+                          setHosts(await api.checkHostsFile());
+                          await checkUpdates();
+                          toast(
+                            t("service.hostsUpdated", {
+                              entries: result.entriesAdded,
+                              preserved: result.unrelatedLinesPreserved,
+                            }),
+                            "ok",
+                          );
+                        })
+                      }
+                    >
+                      {busy === "hosts-update" && <Spinner size={14} />}
+                      {t("service.hostsUpdate")}
+                    </Button>
                     <Button size="sm" onClick={() => openPath(hosts.tempFile).catch(() => {})}>
                       {t("service.hostsOpenTemp")}
                     </Button>

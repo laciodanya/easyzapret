@@ -56,6 +56,10 @@ struct PersistedState {
     stats: HashMap<String, StrategyStat>,
     #[serde(default)]
     cooldown_until_ms: i64,
+    #[serde(default)]
+    last_network_id: Option<String>,
+    #[serde(default)]
+    network_strategies: HashMap<String, String>,
 }
 
 fn state_file() -> std::path::PathBuf {
@@ -379,13 +383,21 @@ fn resolve_candidate_pool(cfg: &AutopilotSettings, all: &[String]) -> Vec<String
 
 /// Strategies that worked before go first, ones that just failed go last;
 /// everything else keeps the policy order.
-fn order_by_history(candidates: Vec<String>, persisted: &PersistedState) -> Vec<String> {
+fn order_by_history(
+    candidates: Vec<String>,
+    persisted: &PersistedState,
+    network_id: Option<&str>,
+) -> Vec<String> {
     let now = now_ms();
+    let preferred = network_id.and_then(|id| persisted.network_strategies.get(id));
     let tier = |name: &String| -> u8 {
+        if preferred.is_some_and(|strategy| strategy.eq_ignore_ascii_case(name)) {
+            return 0;
+        }
         match persisted.stats.get(name) {
-            Some(s) if s.last_ok_ms > s.last_fail_ms => 0,
-            Some(s) if s.last_fail_ms > s.last_ok_ms && now - s.last_fail_ms < RECENT_FAIL_MS => 2,
-            _ => 1,
+            Some(s) if s.last_ok_ms > s.last_fail_ms => 1,
+            Some(s) if s.last_fail_ms > s.last_ok_ms && now - s.last_fail_ms < RECENT_FAIL_MS => 3,
+            _ => 2,
         }
     };
     let mut keyed: Vec<(u8, usize, String)> = candidates
@@ -410,12 +422,15 @@ fn mark_result(persisted: &mut PersistedState, strategy: &str, health: u32, heal
 }
 
 fn current_strategy(state: &AppState) -> String {
-    state
-        .current_strategy
-        .lock()
-        .unwrap()
-        .clone()
-        .or_else(|| settings::load().selected_strategy)
+    crate::zapret::service::service_strategy()
+        .or_else(|| {
+            state
+                .current_strategy
+                .lock()
+                .unwrap()
+                .clone()
+                .or_else(|| settings::load().selected_strategy)
+        })
         .unwrap_or_else(|| "general.bat".into())
 }
 
@@ -498,8 +513,23 @@ async fn recover(
         .into_iter()
         .filter(|c| !c.eq_ignore_ascii_case(from))
         .collect();
+    if let Some(remembered) = crate::network::current_fingerprint()
+        .and_then(|id| persisted.network_strategies.get(&id).cloned())
+    {
+        if let Some(index) = candidates
+            .iter()
+            .position(|candidate| candidate.eq_ignore_ascii_case(&remembered))
+        {
+            let preferred = candidates.remove(index);
+            candidates.insert(0, preferred);
+        }
+    }
     if !best_mode {
-        candidates = order_by_history(candidates, persisted);
+        candidates = order_by_history(
+            candidates,
+            persisted,
+            crate::network::current_fingerprint().as_deref(),
+        );
         candidates.truncate(MAX_ROTATE_TRIALS);
     }
     candidates.truncate(switch_budget - 1);
@@ -805,6 +835,17 @@ pub async fn run_health_cycle(app: AppHandle, force: bool) -> Option<u32> {
         );
         if zapret_on {
             mark_result(&mut persisted, &strategy, m.health, true);
+            if let Some(network_id) = crate::network::current_fingerprint() {
+                persisted
+                    .network_strategies
+                    .insert(network_id, strategy.clone());
+                // Keep the small network memory bounded on shared laptops.
+                while persisted.network_strategies.len() > 24 {
+                    if let Some(key) = persisted.network_strategies.keys().next().cloned() {
+                        persisted.network_strategies.remove(&key);
+                    }
+                }
+            }
             save_persisted(&persisted);
         }
     } else if !crate::probe::internet_reachable().await {
@@ -851,8 +892,53 @@ pub fn start_background_loop(app: AppHandle) {
         tokio::time::sleep(Duration::from_secs(30)).await;
         let mut was_enabled = false;
         let mut next_due = std::time::Instant::now();
+        let mut known_network = load_persisted().last_network_id;
+        let mut candidate_network: Option<(String, u8)> = None;
+        let mut next_network_probe = std::time::Instant::now();
         loop {
             tokio::time::sleep(Duration::from_secs(15)).await;
+            if std::time::Instant::now() >= next_network_probe {
+                next_network_probe = std::time::Instant::now() + Duration::from_secs(45);
+                if let Some(observed) = crate::network::fingerprint().await {
+                    if known_network.as_deref() == Some(observed.as_str()) {
+                        candidate_network = None;
+                        crate::network::set_current_fingerprint(Some(observed));
+                    } else if let Some((candidate, hits)) = candidate_network.as_mut() {
+                        if candidate == &observed {
+                            *hits = hits.saturating_add(1);
+                        } else {
+                            candidate_network = Some((observed, 1));
+                        }
+                        if let Some((candidate, hits)) = candidate_network.as_ref() {
+                            if *hits >= 2 {
+                                let changed = known_network.is_some();
+                                known_network = Some(candidate.clone());
+                                crate::network::set_current_fingerprint(known_network.clone());
+                                let mut persisted = load_persisted();
+                                persisted.last_network_id = known_network.clone();
+                                save_persisted(&persisted);
+                                candidate_network = None;
+                                if changed && settings::load().autopilot.enabled {
+                                    note("info", "Network changed; checking service availability");
+                                    let _ = app.emit(
+                                        "autopilot-event",
+                                        AutopilotEvent {
+                                            kind: "network_changed".into(),
+                                            message: "A new network was detected".into(),
+                                            from_strategy: None,
+                                            to_strategy: None,
+                                            health_percent: None,
+                                        },
+                                    );
+                                    let _ = run_health_cycle(app.clone(), true).await;
+                                }
+                            }
+                        }
+                    } else {
+                        candidate_network = Some((observed, 1));
+                    }
+                }
+            }
             let cfg = settings::load().autopilot;
             if !cfg.enabled {
                 if was_enabled {

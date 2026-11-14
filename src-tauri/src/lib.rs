@@ -2,6 +2,7 @@ mod admin;
 mod autopilot;
 mod autostart;
 mod logs;
+mod network;
 mod paths;
 mod probe;
 mod services;
@@ -371,6 +372,8 @@ pub fn run() {
             zapret::service::set_auto_update_check,
             zapret::service::update_ipset_list,
             zapret::service::check_hosts_file,
+            zapret::service::check_data_updates,
+            zapret::service::update_hosts_file,
             zapret::service::open_hosts_folder,
             zapret::diagnostics::run_diagnostics,
             zapret::diagnostics::remove_conflicting_services,

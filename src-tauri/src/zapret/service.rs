@@ -1,4 +1,6 @@
 use serde::Serialize;
+use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use tauri::State;
 
 #[cfg(windows)]
@@ -7,6 +9,143 @@ use crate::zapret::strategy;
 use crate::{logs, paths, AppState};
 
 const IPSET_DUMMY: &str = "203.0.113.113/32";
+#[cfg(windows)]
+const HOSTS_BLOCK_START: &str = "# BEGIN EASYZAPRET FLOWSEAL HOSTS";
+#[cfg(windows)]
+const HOSTS_BLOCK_END: &str = "# END EASYZAPRET FLOWSEAL HOSTS";
+
+fn flowseal_file_url(name: &str) -> String {
+    format!(
+        "https://raw.githubusercontent.com/{}/refs/heads/main/.service/{name}",
+        crate::updates::ZAPRET_REPO
+    )
+}
+
+async fn download_flowseal_file(name: &str) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("EasyZapret/0.6")
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let response = client
+        .get(flowseal_file_url(name))
+        .send()
+        .await
+        .map_err(|e| format!("network error: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    if bytes.is_empty() || bytes.len() > 4 * 1024 * 1024 {
+        return Err(format!("unexpected {name} size: {} bytes", bytes.len()));
+    }
+    String::from_utf8(bytes.to_vec()).map_err(|_| format!("{name} is not UTF-8"))
+}
+
+fn normalized_hash(text: &str) -> String {
+    let normalized = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("{:x}", Sha256::digest(normalized.as_bytes()))
+}
+
+fn host_records(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|line| {
+            let fields = line
+                .split('#')
+                .next()?
+                .split_whitespace()
+                .collect::<Vec<_>>();
+            if fields.len() < 2 {
+                return None;
+            }
+            Some(
+                fields[1..]
+                    .iter()
+                    .map(|host| (fields[0].to_ascii_lowercase(), host.to_ascii_lowercase()))
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .flatten()
+        .collect()
+}
+
+fn hosts_are_current(installed: &str, reference: &str) -> bool {
+    let current: HashSet<_> = host_records(installed).into_iter().collect();
+    !host_records(reference).is_empty()
+        && host_records(reference)
+            .iter()
+            .all(|record| current.contains(record))
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataUpdateStatus {
+    pub component: String,
+    pub update_available: bool,
+    pub latest_hash: Option<String>,
+    pub error: Option<String>,
+}
+
+#[tauri::command]
+pub async fn check_data_updates() -> Vec<DataUpdateStatus> {
+    let mut result = Vec::with_capacity(2);
+    match download_flowseal_file("ipset-service.txt").await {
+        Ok(remote) => {
+            let list = paths::zapret_lists_dir();
+            let current = if ipset_mode() == "loaded" {
+                std::fs::read_to_string(list.join("ipset-all.txt")).ok()
+            } else {
+                std::fs::read_to_string(list.join("ipset-all.txt.backup")).ok()
+            };
+            let latest_hash = normalized_hash(&remote);
+            result.push(DataUpdateStatus {
+                component: "ipset".into(),
+                update_available: current.as_deref().map(normalized_hash).as_deref()
+                    != Some(latest_hash.as_str()),
+                latest_hash: Some(latest_hash),
+                error: None,
+            });
+        }
+        Err(error) => result.push(DataUpdateStatus {
+            component: "ipset".into(),
+            update_available: false,
+            latest_hash: None,
+            error: Some(error),
+        }),
+    }
+    match download_flowseal_file("hosts").await {
+        Ok(remote) => {
+            #[cfg(windows)]
+            let hosts_path = crate::util::windows_directory()
+                .ok()
+                .map(|p| p.join("System32/drivers/etc/hosts"));
+            #[cfg(not(windows))]
+            let hosts_path = Some(std::path::PathBuf::from("/etc/hosts"));
+            let current = hosts_path
+                .as_deref()
+                .and_then(|path| std::fs::read_to_string(path).ok())
+                .unwrap_or_default();
+            result.push(DataUpdateStatus {
+                component: "hosts".into(),
+                update_available: !hosts_are_current(&current, &remote),
+                latest_hash: Some(normalized_hash(&remote)),
+                error: None,
+            });
+        }
+        Err(error) => result.push(DataUpdateStatus {
+            component: "hosts".into(),
+            update_available: false,
+            latest_hash: None,
+            error: Some(error),
+        }),
+    }
+    result
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -492,26 +631,23 @@ pub fn set_auto_update_check(enabled: bool) -> Result<(), String> {
 /// Update IPSet List: downloads .service/ipset-service.txt into ipset-all.txt.
 #[tauri::command]
 pub async fn update_ipset_list() -> Result<(), String> {
-    let url = format!(
-        "https://raw.githubusercontent.com/{}/refs/heads/main/.service/ipset-service.txt",
-        crate::updates::ZAPRET_REPO
-    );
-    let resp = reqwest::Client::builder()
-        .user_agent("EasyZapret/0.1")
-        .build()
-        .map_err(|e| e.to_string())?
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| format!("network error: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
+    let body = download_flowseal_file("ipset-service.txt").await?;
+    if !body.lines().any(|line| line.trim().contains('/')) {
+        return Err("downloaded IPSet list contains no network entries".into());
     }
-    let body = resp.text().await.map_err(|e| e.to_string())?;
     let lists = paths::zapret_lists_dir();
     std::fs::create_dir_all(&lists).map_err(|e| e.to_string())?;
-    std::fs::write(lists.join("ipset-all.txt"), body).map_err(|e| e.to_string())?;
-    logs::append("zapret", "ipset-all.txt updated from repository");
+    let destination = if ipset_mode() == "loaded" {
+        lists.join("ipset-all.txt")
+    } else {
+        // Keep the selected none/any mode intact while refreshing its saved list.
+        lists.join("ipset-all.txt.backup")
+    };
+    std::fs::write(destination, body).map_err(|e| e.to_string())?;
+    logs::append(
+        "zapret",
+        "IPSet list refreshed from Flowseal (filter mode preserved)",
+    );
     Ok(())
 }
 
@@ -529,22 +665,7 @@ pub struct HostsCheck {
 /// we do not patch hosts automatically — the user merges manually.
 #[tauri::command]
 pub async fn check_hosts_file() -> Result<HostsCheck, String> {
-    let url = format!(
-        "https://raw.githubusercontent.com/{}/refs/heads/main/.service/hosts",
-        crate::updates::ZAPRET_REPO
-    );
-    let resp = reqwest::Client::builder()
-        .user_agent("EasyZapret/0.1")
-        .build()
-        .map_err(|e| e.to_string())?
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| format!("network error: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    let body = resp.text().await.map_err(|e| e.to_string())?;
+    let body = download_flowseal_file("hosts").await?;
 
     let temp_file = paths::tmp_dir().join("zapret_hosts.txt");
     std::fs::create_dir_all(paths::tmp_dir()).map_err(|e| e.to_string())?;
@@ -560,16 +681,116 @@ pub async fn check_hosts_file() -> Result<HostsCheck, String> {
     let hosts_path = "/etc/hosts".to_string();
     let hosts = std::fs::read_to_string(&hosts_path).unwrap_or_default();
 
-    let lines: Vec<&str> = body.lines().filter(|l| !l.trim().is_empty()).collect();
-    let first = lines.first().copied().unwrap_or_default();
-    let last = lines.last().copied().unwrap_or_default();
-    let up_to_date = !first.is_empty() && hosts.contains(first) && hosts.contains(last);
+    let up_to_date = hosts_are_current(&hosts, &body);
 
     Ok(HostsCheck {
         up_to_date,
         temp_file: temp_file.to_string_lossy().to_string(),
         hosts_file: hosts_path,
     })
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostsUpdateResult {
+    pub backup_file: String,
+    pub entries_added: usize,
+    pub unrelated_lines_preserved: usize,
+}
+
+/// Merges Flowseal's current hosts entries while retaining unrelated user
+/// records. Existing entries for Flowseal-owned hostnames are replaced, and
+/// the original system file is backed up before it is changed.
+#[tauri::command]
+pub async fn update_hosts_file() -> Result<HostsUpdateResult, String> {
+    #[cfg(not(windows))]
+    return Err("Windows only".into());
+    #[cfg(windows)]
+    {
+        if !crate::admin::is_admin() {
+            return Err("administrator_required".into());
+        }
+        let remote = download_flowseal_file("hosts").await?;
+        let hosts_path = crate::util::windows_directory()
+            .map_err(|e| format!("cannot resolve Windows directory: {e}"))?
+            .join("System32/drivers/etc/hosts");
+        let current = std::fs::read_to_string(&hosts_path).map_err(|e| e.to_string())?;
+        let managed: HashSet<String> = host_records(&remote)
+            .into_iter()
+            .map(|(_, host)| host)
+            .collect();
+        let mut lines = Vec::new();
+        let mut in_block = false;
+        let mut preserved = 0usize;
+        for line in current.lines() {
+            let trimmed = line.trim();
+            if trimmed.eq_ignore_ascii_case(HOSTS_BLOCK_START) {
+                in_block = true;
+                continue;
+            }
+            if trimmed.eq_ignore_ascii_case(HOSTS_BLOCK_END) {
+                in_block = false;
+                continue;
+            }
+            if in_block {
+                continue;
+            }
+            let fields = line
+                .split('#')
+                .next()
+                .unwrap_or_default()
+                .split_whitespace()
+                .collect::<Vec<_>>();
+            if fields.len() < 2 {
+                lines.push(line.to_string());
+                preserved += 1;
+                continue;
+            }
+            let address = fields[0];
+            let retained: Vec<&str> = fields[1..]
+                .iter()
+                .copied()
+                .filter(|host| !managed.contains(&host.to_ascii_lowercase()))
+                .collect();
+            if retained.is_empty() {
+                continue;
+            }
+            lines.push(format!("{address}\t{}", retained.join(" ")));
+            preserved += 1;
+        }
+        while lines.last().is_some_and(|line| line.is_empty()) {
+            lines.pop();
+        }
+        if !lines.is_empty() {
+            lines.push(String::new());
+        }
+        lines.push(HOSTS_BLOCK_START.into());
+        lines.extend(remote.lines().map(str::to_string));
+        lines.push(HOSTS_BLOCK_END.into());
+        let merged = format!("{}\r\n", lines.join("\r\n"));
+
+        let backup = hosts_path.with_file_name(format!(
+            "hosts.easyzapret-{}.bak",
+            chrono::Local::now().format("%Y%m%d-%H%M%S")
+        ));
+        std::fs::copy(&hosts_path, &backup).map_err(|e| format!("hosts backup failed: {e}"))?;
+        if let Err(error) = std::fs::write(&hosts_path, merged) {
+            let _ = std::fs::copy(&backup, &hosts_path);
+            return Err(format!("hosts update failed: {error}"));
+        }
+        logs::append(
+            "zapret",
+            &format!(
+                "Flowseal hosts entries updated; backup saved to {}",
+                backup.display()
+            ),
+        );
+        Ok(HostsUpdateResult {
+            backup_file: backup.to_string_lossy().into_owned(),
+            entries_added: host_records(&remote).len(),
+            unrelated_lines_preserved: preserved,
+        })
+    }
 }
 
 #[tauri::command]

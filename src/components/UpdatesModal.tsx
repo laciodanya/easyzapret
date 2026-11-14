@@ -13,6 +13,7 @@ export function UpdatesModal() {
   const {
     showUpdatesModal,
     updates,
+    dataUpdates,
     appUpdate,
     dismissUpdatesModal,
     refreshComponents,
@@ -21,11 +22,37 @@ export function UpdatesModal() {
   } = useStore();
   const [installing, setInstalling] = useState<string | null>(null);
   const [appInstalling, setAppInstalling] = useState<AppUpdateProgress | null>(null);
+  const [dataInstalling, setDataInstalling] = useState<"ipset" | "hosts" | null>(null);
   const [confirm, setConfirm] = useState<"zapret" | "tgproxy" | null>(null);
 
   const available = updates?.filter((u) => u.updateAvailable) ?? [];
   const appAvailable = !!appUpdate?.updateAvailable;
-  if (!showUpdatesModal || (available.length === 0 && !appAvailable)) return null;
+  const availableData = dataUpdates?.filter((u) => u.updateAvailable) ?? [];
+  if (!showUpdatesModal || (available.length === 0 && !appAvailable && availableData.length === 0)) return null;
+
+  async function installData(component: "ipset" | "hosts") {
+    setDataInstalling(component);
+    try {
+      if (component === "ipset") {
+        await api.updateIpsetList();
+        toast(t("service.updateIpsetDone"), "ok");
+      } else {
+        const result = await api.updateHostsFile();
+        toast(
+          t("service.hostsUpdated", {
+            entries: result.entriesAdded,
+            preserved: result.unrelatedLinesPreserved,
+          }),
+          "ok",
+        );
+      }
+      await checkUpdates();
+    } catch (e) {
+      toast(errText(t, e), "fail");
+    } finally {
+      setDataInstalling(null);
+    }
+  }
 
   async function install(component: "zapret" | "tgproxy") {
     setConfirm(null);
@@ -70,13 +97,36 @@ export function UpdatesModal() {
       onClose={confirm ? undefined : dismissUpdatesModal}
       title={t("settings.updatesModalTitle")}
       footer={
-        <Button variant="ghost" onClick={dismissUpdatesModal} disabled={installing !== null || appBusy}>
+        <Button
+          variant="ghost"
+          onClick={dismissUpdatesModal}
+          disabled={installing !== null || appBusy || dataInstalling !== null}
+        >
           {t("common.later")}
         </Button>
       }
     >
       <p className="mb-2">{t("settings.updatesModalText")}</p>
       <div className="divide-y divide-line">
+        {availableData.map((update) => (
+          <div key={update.component} className="flex items-center justify-between gap-4 py-3">
+            <div>
+              <div className="text-sm font-medium text-fg">
+                {update.component === "ipset" ? t("updates.ipset") : t("updates.hosts")}
+              </div>
+              <div className="text-[13px] text-muted">{t("updates.dataUpdateAvailable")}</div>
+            </div>
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={dataInstalling !== null || installing !== null || appBusy}
+              onClick={() => void installData(update.component)}
+            >
+              {dataInstalling === update.component && <Spinner size={14} />}
+              {t("common.update")}
+            </Button>
+          </div>
+        ))}
         {appAvailable && (
           <div className="flex items-center justify-between gap-4 py-3">
             <div>

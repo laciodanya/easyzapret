@@ -10,8 +10,7 @@ type Notice = "available" | "upToDate" | "failed";
 
 interface UpdateItem {
   name: string;
-  from: string | null;
-  to: string;
+  detail: string;
 }
 
 const AUTO_CLOSE_MS = 3500;
@@ -20,6 +19,7 @@ const AUTO_CLOSE_MS = 3500;
 export function UpdateButton() {
   const { t } = useTranslation();
   const updates = useStore((s) => s.updates);
+  const dataUpdates = useStore((s) => s.dataUpdates);
   const appUpdate = useStore((s) => s.appUpdate);
   const checkedAt = useStore((s) => s.updatesCheckedAt);
   const checkUpdates = useStore((s) => s.checkUpdates);
@@ -33,17 +33,23 @@ export function UpdateButton() {
 
   const items: UpdateItem[] = [];
   if (appUpdate?.updateAvailable && appUpdate.latest) {
-    items.push({ name: "EasyZapret", from: appUpdate.current ?? null, to: appUpdate.latest });
+    items.push({ name: "EasyZapret", detail: `${appUpdate.current ?? "—"} → ${appUpdate.latest}` });
   }
   for (const u of updates ?? []) {
     if (!u.updateAvailable || !u.latest) continue;
     items.push({
       name: u.component === "zapret" ? "Zapret" : "Telegram Proxy",
-      from: u.installed ?? null,
-      to: u.latest,
+      detail: `${u.installed ?? "—"} → ${u.latest}`,
     });
   }
-  const signature = items.map((i) => `${i.name}:${i.to}`).join("|");
+  for (const update of dataUpdates ?? []) {
+    if (!update.updateAvailable) continue;
+    items.push({
+      name: update.component === "ipset" ? t("updates.ipset") : t("updates.hosts"),
+      detail: t("updates.dataUpdateAvailable"),
+    });
+  }
+  const signature = items.map((i) => `${i.name}:${i.detail}`).join("|");
   const hasUpdates = items.length > 0;
 
   // Background checks: surface a new set of updates once, without being asked.
@@ -141,9 +147,7 @@ export function UpdateButton() {
                 {items.map((item) => (
                   <li key={item.name} className="flex items-baseline justify-between gap-3">
                     <span className="font-medium">{item.name}</span>
-                    <span className="truncate text-muted">
-                      {item.from ?? "—"} → <span className="text-fg">{item.to}</span>
-                    </span>
+                    <span className="truncate text-muted">{item.detail}</span>
                   </li>
                 ))}
               </ul>

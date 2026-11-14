@@ -12,6 +12,7 @@ import type {
   AutopilotSettings,
   AutostartSettings,
   ComponentsState,
+  DataUpdateStatus,
   FullStatus,
   ServiceHealth,
   Settings,
@@ -49,6 +50,7 @@ interface AppStore {
   status: FullStatus | null;
   strategies: string[];
   updates: UpdateStatus[] | null;
+  dataUpdates: DataUpdateStatus[] | null;
   appUpdate: AppUpdateStatus | null;
   updatesCheckedAt: Date | null;
   updatesError: boolean;
@@ -156,6 +158,7 @@ export const useStore = create<AppStore>((set, get) => ({
   status: null,
   strategies: [],
   updates: null,
+  dataUpdates: null,
   appUpdate: null,
   updatesCheckedAt: null,
   updatesError: false,
@@ -290,13 +293,15 @@ export const useStore = create<AppStore>((set, get) => ({
 
   checkUpdates: async () => {
     try {
-      const [updates, appUpdate] = await Promise.all([
+      const [updates, appUpdate, dataUpdates] = await Promise.all([
         api.checkUpdates(),
         api.checkAppUpdate().catch(() => null),
+        api.checkDataUpdates().catch(() => null),
       ]);
       const hasErrors = updates.every((u) => u.error) && (!appUpdate || !!appUpdate.error);
       set({
         updates,
+        dataUpdates,
         appUpdate,
         updatesCheckedAt: new Date(),
         updatesError: hasErrors,
@@ -370,6 +375,9 @@ export function setupAutopilotListener() {
         break;
       case "no_fix":
         toast(i18n.t("autopilot.toastNoFix"), "fail");
+        break;
+      case "network_changed":
+        toast(i18n.t("autopilot.toastNetworkChanged"), "info");
         break;
       default:
         break;

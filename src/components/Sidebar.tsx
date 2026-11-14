@@ -71,10 +71,13 @@ export function Sidebar() {
   const status = useStore((s) => s.status);
   const appInfo = useStore((s) => s.appInfo);
   const updates = useStore((s) => s.updates);
+  const dataUpdates = useStore((s) => s.dataUpdates);
   const appUpdate = useStore((s) => s.appUpdate);
 
   const hasUpdate =
-    !!appUpdate?.updateAvailable || !!updates?.some((u) => u.updateAvailable);
+    !!appUpdate?.updateAvailable ||
+    !!updates?.some((u) => u.updateAvailable) ||
+    !!dataUpdates?.some((u) => u.updateAvailable);
   const on = t("sidebar.on");
   const off = t("sidebar.off");
 

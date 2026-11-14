@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag matching src-tauri/tauri.conf.json (for example v0.6.1)"
+        description: "Release tag matching src-tauri/tauri.conf.json (for example v0.6.2)"
         required: true
         type: string
 
@@ -243,11 +243,11 @@ jobs:
           body: |
             ## What's Changed
 
-            - Жёстче проверка загрузок Zapret и Telegram Proxy: хеши закреплены в приложении, ZIP не распакует опасные пути, есть staging и откат при сбое
-            - Защита папки данных `C:\EasyZapret`: отказ от junction/reparse, аккуратнее права доступа, атомарная запись настроек
-            - Релизный workflow подписывает только настоящие git-теги, а не одноимённые ветки
-            - Добавлен CI на push/PR и Dependabot
+            - Автопилот замечает смену сети и сначала проверяет стратегию, которая уже работала в ней
+            - Обновления IPSet и hosts показываются в общей плашке обновлений
+            - Обновление hosts сохраняет пользовательские записи и создаёт резервную копию
+            - Обновление IPSet сохраняет выбранный режим фильтра
 
-            **Full Changelog**: https://github.com/laciodanya/easyzapret/compare/v0.6.0...v0.6.1
+            **Full Changelog**: https://github.com/laciodanya/easyzapret/compare/v0.6.1...v0.6.2
           fail_on_unmatched_files: true
           files: release-bundle/*

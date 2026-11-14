@@ -171,6 +171,13 @@ export interface UpdateStatus {
   error: string | null;
 }
 
+export interface DataUpdateStatus {
+  component: "ipset" | "hosts";
+  updateAvailable: boolean;
+  latestHash: string | null;
+  error: string | null;
+}
+
 export interface AppUpdateStatus {
   current: string;
   latest: string | null;

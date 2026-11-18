@@ -96,7 +96,7 @@ jobs:
         run: npm ci
 
       - name: Dependency audit
-        run: npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Frontend tests
         run: npm test

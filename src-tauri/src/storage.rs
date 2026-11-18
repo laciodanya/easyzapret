@@ -800,17 +800,32 @@ mod windows {
             FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | READ_CONTROL,
             FILE_SHARE_READ | FILE_SHARE_WRITE,
         )?;
-        if is_reparse(&guard)?
-            || file_identity_from_handle(&guard)? != expected
-            || !path_security_is_trusted(&guard)?
-        {
+        if is_reparse(&guard)? {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("{} is a reparse point", root.display()),
+            ));
+        }
+        let actual = file_identity_from_handle(&guard)?;
+        if actual != expected {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 format!(
-                    "{} identity or ACL does not match the protected storage marker",
+                    "{} was replaced after it was secured. Move the unexpected directory aside before starting EasyZapret.",
                     root.display()
                 ),
             ));
+        }
+        // Explorer's "Continue" permanently adds the current user to the ACL.
+        // That is annoying but not worth blocking startup and wiping user data.
+        if !path_security_is_trusted(&guard)? {
+            crate::logs::warn(
+                "app",
+                &format!(
+                    "{} ACL no longer matches the protected marker (often after opening the folder in Explorer); continuing anyway",
+                    root.display()
+                ),
+            );
         }
         ROOT_GUARD.set(guard).map_err(|_| {
             std::io::Error::new(
@@ -1286,17 +1301,24 @@ mod windows {
                     return activate_empty_storage_at(&key, &root, &root);
                 }
                 let actual = file_identity(&root)?;
-                if actual != expected {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::PermissionDenied,
-                        format!(
-                            "{} was replaced after it was secured. Move the unexpected directory aside before starting EasyZapret.",
+                let identity = if actual == expected {
+                    expected
+                } else {
+                    // The folder was recreated (rename/restore). Keep the data
+                    // that is there and refresh the marker instead of refusing
+                    // to start.
+                    crate::logs::warn(
+                        "app",
+                        &format!(
+                            "{} identity changed since it was secured; accepting the current directory",
                             root.display()
                         ),
-                    ));
-                }
+                    );
+                    finalize_active(&key, actual, &root, None)?;
+                    actual
+                };
                 paths::set_windows_data_dir(root.clone())?;
-                install_root_guard(&root, expected)?;
+                install_root_guard(&root, identity)?;
                 read_restore_plan(&key)
             }
             Some("pending") => recover_pending(&key),

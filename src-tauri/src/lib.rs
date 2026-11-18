@@ -278,20 +278,30 @@ pub fn run() {
             }
         }
     }
-    let storage_restore = match storage::prepare() {
-        Ok(plan) => plan,
+    let (storage_restore, storage_prepare_failed) = match storage::prepare() {
+        Ok(plan) => (plan, false),
         Err(e) => {
-            fatal_startup_error(&format!(
-                "The protected data directory could not be verified or migrated. No components were started.\n\n{e}"
-            ));
-            return;
+            // Never brick the app over storage hardening. Fall back to the
+            // legacy data path so lists/settings stay reachable.
+            #[cfg(windows)]
+            {
+                let _ = paths::set_windows_data_dir(paths::legacy_data_dir());
+            }
+            eprintln!("EasyZapret storage prepare failed; using legacy data path: {e}");
+            (None, true)
         }
     };
     if let Err(e) = paths::ensure_dirs() {
         fatal_startup_error(&format!(
-            "The protected data directory could not be prepared. No components were started.\n\n{e}"
+            "The data directory could not be prepared. No components were started.\n\n{e}"
         ));
         return;
+    }
+    if storage_prepare_failed {
+        logs::warn(
+            "app",
+            "secure storage prepare failed; continuing with the legacy data directory",
+        );
     }
     std::panic::set_hook(Box::new(|info| {
         logs::error("app", &format!("panic: {info}"));

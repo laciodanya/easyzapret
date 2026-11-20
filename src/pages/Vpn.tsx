@@ -248,6 +248,13 @@ export function VpnPage() {
           {saveButton}
         </div>}
         {tab === "settings" && <div className="space-y-5">
+          {installed && !unsupported && <Panel title={t("vpn.components")}>
+            <Row title={t("vpn.installed")} description={t(running ? "vpn.errors.vpn_disconnect_to_install" : "vpn.repairDescription")}>
+              <Button icon="download" disabled={running || busy || vpnInstalling} onClick={() => void installVpn()}>
+                {t(vpnInstallError ? "vpn.retry" : "vpn.repair")}
+              </Button>
+            </Row>
+          </Panel>}
           <Panel title={t("vpn.dns")}>
             <Row title={t("vpn.dnsServer")} description={t("vpn.dnsDescription")}>
               <Input aria-label={t("vpn.dnsServer")} className="w-64" value={draft.dnsServer} disabled={busy}

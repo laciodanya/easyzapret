@@ -1,5 +1,6 @@
 export const vpnRu = {
   openRouting: "Открыть маршрутизацию",
+  components: "Компоненты VPN", repair: "Переустановить", repairDescription: "Заново проверьте и установите sing-box и Xray, если их файлы были повреждены.",
   serverLabel: "Сервер VPN", pickServer: "Выбрать сервер", searchServers: "Поиск по имени, адресу или протоколу",
   noServerMatches: "Подходящих серверов нет.", manualServers: "Добавленные вручную",
   switchToVpn: "При подключении VPN EasyZapret отключит WARP и zapret и удалит службы zapret и WinDivert.",
@@ -100,6 +101,7 @@ export const vpnRu = {
 export const vpnEn = {
   ...vpnRu,
   openRouting: "Open routing settings",
+  components: "VPN components", repair: "Reinstall", repairDescription: "Verify and reinstall sing-box and Xray if their files have been damaged.",
   serverLabel: "VPN server", pickServer: "Choose a server", searchServers: "Search by name, address, or protocol",
   noServerMatches: "No matching servers.", manualServers: "Added manually",
   switchToVpn: "Connecting VPN disconnects WARP and zapret and removes the zapret and WinDivert services.",

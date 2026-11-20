@@ -431,6 +431,9 @@ fn conflict_app_name(name: &str) -> Option<&'static str> {
                     "svc",
                     "booster",
                     "boosterservice",
+                    "booster_ball",
+                    "booster_render",
+                    "booster_translate",
                     "client",
                     "helper",
                     "tray",
@@ -445,7 +448,26 @@ fn conflict_app_name(name: &str) -> Option<&'static str> {
 }
 
 fn conflict_app(process: &sysinfo::Process) -> Option<&'static str> {
-    conflict_app_name(&process.name().to_string_lossy())
+    let name = process.name().to_string_lossy();
+    conflict_app_name(&name).or_else(|| {
+        if !name.eq_ignore_ascii_case("launcher.exe") {
+            return None;
+        }
+        // Generic launchers are only related to a booster when their own executable
+        // sits under the corresponding product directory.
+        for ancestor in process.exe()?.ancestors().skip(1) {
+            let Some(directory) = ancestor.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            if directory.eq_ignore_ascii_case("GearUPBooster") {
+                return Some("GearUP");
+            }
+            if directory.eq_ignore_ascii_case("ExitLag") {
+                return Some("ExitLag");
+            }
+        }
+        None
+    })
 }
 
 fn conflict_apps(system: &sysinfo::System) -> Vec<String> {
@@ -502,6 +524,7 @@ mod tests {
     fn detects_only_known_conflicting_executable_names() {
         assert_eq!(conflict_app_name("ExitLagService.exe"), Some("ExitLag"));
         assert_eq!(conflict_app_name("GearUP Booster.exe"), Some("GearUP"));
+        assert_eq!(conflict_app_name("gearup_booster_ball.exe"), Some("GearUP"));
         assert_eq!(conflict_app_name("GoodbyeDPI.exe"), Some("GoodbyeDPI"));
         assert_eq!(conflict_app_name("exitlag-notes.exe"), None);
         assert_eq!(conflict_app_name("notexitlag.exe"), None);

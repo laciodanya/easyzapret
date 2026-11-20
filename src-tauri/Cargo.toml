@@ -34,9 +34,6 @@ sha2 = "0.10"
 base64 = "0.22"
 percent-encoding = "2"
 
-[dev-dependencies]
-minisign-verify = "0.2.5"
-
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
 windows-sys = { version = "0.59", features = [

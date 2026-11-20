@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
 import { setupAutopilotListener, useStore } from "./lib/store";
 import { BootSplash } from "./components/BootSplash";
 import { Sidebar } from "./components/Sidebar";
@@ -42,6 +43,15 @@ export default function App() {
   useEffect(() => {
     init();
     const cleanupAp = setupAutopilotListener();
+    void (async () => {
+      try {
+        if (!(await isPermissionGranted())) {
+          await requestPermission();
+        }
+      } catch {
+        // Notifications are best-effort when the window is minimized.
+      }
+    })();
 
     let timer: ReturnType<typeof setTimeout>;
     const schedule = () => {

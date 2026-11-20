@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use crate::paths;
+use crate::util;
 
 static SETTINGS_IO: Mutex<()> = Mutex::new(());
 
@@ -146,9 +147,7 @@ fn load_unlocked() -> Settings {
 }
 
 pub fn load() -> Settings {
-    let _guard = SETTINGS_IO
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _guard = util::lock_mutex(&SETTINGS_IO);
     load_unlocked()
 }
 
@@ -158,75 +157,19 @@ fn normalize_theme(s: &mut Settings) {
     }
 }
 
-#[cfg(windows)]
-fn replace_file(source: &Path, destination: &Path) -> Result<(), String> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::{
-        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
-    };
-
-    let source_wide: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
-    let destination_wide: Vec<u16> = destination
-        .as_os_str()
-        .encode_wide()
-        .chain(Some(0))
-        .collect();
-    let ok = unsafe {
-        MoveFileExW(
-            source_wide.as_ptr(),
-            destination_wide.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    };
-    if ok == 0 {
-        Err(std::io::Error::last_os_error().to_string())
-    } else {
-        Ok(())
-    }
-}
-
-#[cfg(not(windows))]
-fn replace_file(source: &Path, destination: &Path) -> Result<(), String> {
-    std::fs::rename(source, destination).map_err(|e| e.to_string())
-}
-
 fn save_unlocked(settings: &Settings) -> Result<(), String> {
     paths::ensure_dirs().map_err(|e| e.to_string())?;
     let text = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
     let destination = paths::settings_file();
-    let temporary = paths::data_dir().join(format!(
-        ".config.json.{}.{}.tmp",
-        std::process::id(),
-        chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
-    ));
-
-    let result = (|| {
-        use std::io::Write;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)
-            .map_err(|e| e.to_string())?;
-        file.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
-        file.sync_all().map_err(|e| e.to_string())?;
-
-        if destination.is_file() {
-            std::fs::copy(&destination, backup_file()).map_err(|e| e.to_string())?;
-        }
-        replace_file(&temporary, &destination)
-    })();
-
-    if result.is_err() {
-        let _ = std::fs::remove_file(&temporary);
+    if destination.is_file() {
+        std::fs::copy(&destination, backup_file()).map_err(|e| e.to_string())?;
     }
-    result
+    util::atomic_write(&destination, text.as_bytes())
 }
 
 /// Performs a read-modify-write transaction under one process-wide lock.
 pub fn update(mutator: impl FnOnce(&mut Settings)) -> Result<Settings, String> {
-    let _guard = SETTINGS_IO
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _guard = util::lock_mutex(&SETTINGS_IO);
     let mut settings = load_unlocked();
     mutator(&mut settings);
     save_unlocked(&settings)?;
@@ -305,9 +248,7 @@ fn merge_json(target: &mut serde_json::Value, patch: serde_json::Value) {
 /// autopilot or updater between rendering and clicking a toggle.
 #[tauri::command]
 pub fn patch_settings(patch: serde_json::Value) -> Result<Settings, String> {
-    let _guard = SETTINGS_IO
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _guard = util::lock_mutex(&SETTINGS_IO);
     let current = load_unlocked();
     let before = serde_json::to_value(&current).map_err(|e| e.to_string())?;
     let patch_object = patch

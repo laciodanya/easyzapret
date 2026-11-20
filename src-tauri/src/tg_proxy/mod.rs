@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use serde::Serialize;
-use sysinfo::{Process, ProcessesToUpdate, System};
+use sysinfo::Process;
 
-use crate::{logs, paths};
+use crate::{logs, paths, util};
 
 fn normalized_exe(path: &std::path::Path) -> String {
     path.to_string_lossy()
@@ -59,14 +59,15 @@ pub fn own_log_file() -> Option<PathBuf> {
 }
 
 pub fn proxy_running() -> bool {
-    let mut sys = System::new();
-    sys.refresh_processes(ProcessesToUpdate::All, true);
-    sys.processes().values().any(is_managed_proxy)
+    util::process_snapshot()
+        .map(|sys| sys.processes().values().any(is_managed_proxy))
+        .unwrap_or(false)
 }
 
 pub fn kill_all() {
-    let mut sys = System::new();
-    sys.refresh_processes(ProcessesToUpdate::All, true);
+    let Some(sys) = util::process_snapshot() else {
+        return;
+    };
     for p in sys.processes().values() {
         if is_managed_proxy(p) {
             p.kill();

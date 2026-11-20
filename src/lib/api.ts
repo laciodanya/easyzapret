@@ -7,6 +7,7 @@ import type {
   AutopilotStatus,
   AutostartState,
   ComponentsState,
+  ConfigImportResult,
   DiagItem,
   FullStatus,
   HostsCheck,
@@ -80,6 +81,8 @@ export const api = {
   getSettings: () => call<Settings>("get_settings"),
   patchSettings: (patch: Record<string, unknown>) =>
     call<Settings>("patch_settings", { patch }),
+  exportSettings: () => call<string>("export_settings"),
+  importSettings: (json: string) => call<ConfigImportResult>("import_settings", { json }),
 
   // components / updates
   getComponentsState: () => call<ComponentsState>("get_components_state"),
@@ -132,6 +135,7 @@ export const api = {
   warpResetKeys: () => call<void>("warp_reset_keys"),
   /** Resolves with the mode warp-cli actually reports after the change. */
   warpSetMode: (mode: "warp" | "doh" | "warp+doh") => call<string>("warp_set_mode", { mode }),
+  warpConflictApps: () => call<string[]>("warp_conflict_apps"),
 
   // autopilot
   getAutopilotStatus: () => call<AutopilotStatus>("get_autopilot_status"),

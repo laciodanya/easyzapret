@@ -191,7 +191,7 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
         .build(app)?;
 
     let state = app.state::<AppState>();
-    *state.tray.lock().unwrap() = Some(TrayHandles {
+    *crate::util::lock_mutex(&state.tray) = Some(TrayHandles {
         tray,
         zapret_item,
         tg_item,
@@ -214,7 +214,7 @@ pub fn update_tray_now(app: &AppHandle) {
     let l = labels(&lang);
 
     let state = app.state::<AppState>();
-    let guard = state.tray.lock().unwrap();
+    let guard = crate::util::lock_mutex(&state.tray);
     if let Some(handles) = guard.as_ref() {
         let color = if zapret_on || tg_on || warp_on {
             (20, 184, 166) // teal — active

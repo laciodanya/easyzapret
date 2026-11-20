@@ -1,11 +1,11 @@
 use std::io::BufRead;
 use std::process::Stdio;
 
-use sysinfo::{Process, ProcessesToUpdate, System};
+use sysinfo::Process;
 use tauri::State;
 
 use crate::zapret::strategy;
-use crate::{logs, paths, AppState};
+use crate::{logs, paths, util, AppState};
 
 fn normalized_exe(path: &std::path::Path) -> String {
     path.to_string_lossy()
@@ -31,14 +31,15 @@ fn is_managed_winws(process: &Process) -> bool {
 }
 
 pub fn winws_running() -> bool {
-    let mut sys = System::new();
-    sys.refresh_processes(ProcessesToUpdate::All, true);
-    sys.processes().values().any(is_managed_winws)
+    util::process_snapshot()
+        .map(|sys| sys.processes().values().any(is_managed_winws))
+        .unwrap_or(false)
 }
 
 pub fn kill_all_winws() {
-    let mut sys = System::new();
-    sys.refresh_processes(ProcessesToUpdate::All, true);
+    let Some(sys) = util::process_snapshot() else {
+        return;
+    };
     for p in sys.processes().values() {
         if is_managed_winws(p) {
             p.kill();
@@ -53,11 +54,11 @@ pub fn force_kill_winws() {
     #[cfg(windows)]
     {
         for _ in 0..4 {
-            let mut sys = System::new();
-            sys.refresh_processes(ProcessesToUpdate::All, true);
-            for process in sys.processes().values().filter(|p| is_managed_winws(p)) {
-                let pid = process.pid().as_u32().to_string();
-                let _ = crate::util::run_capture("taskkill", &["/PID", &pid, "/T", "/F"]);
+            if let Some(sys) = util::process_snapshot() {
+                for process in sys.processes().values().filter(|p| is_managed_winws(p)) {
+                    let pid = process.pid().as_u32().to_string();
+                    let _ = crate::util::run_capture("taskkill", &["/PID", &pid, "/T", "/F"]);
+                }
             }
             std::thread::sleep(std::time::Duration::from_millis(250));
             if !winws_running() {
@@ -137,8 +138,8 @@ pub fn start_strategy(state: &AppState, bat_name: &str) -> Result<(), String> {
         });
     }
 
-    *state.zapret_child.lock().unwrap() = Some(child);
-    *state.current_strategy.lock().unwrap() = Some(bat_name.to_string());
+    *crate::util::lock_mutex(&state.zapret_child) = Some(child);
+    *crate::util::lock_mutex(&state.current_strategy) = Some(bat_name.to_string());
 
     // winws exits within a second or two when its args or the driver are wrong.
     // Record that fact so a log shared on GitHub explains "it just turns off".
@@ -156,13 +157,13 @@ pub fn start_strategy(state: &AppState, bat_name: &str) -> Result<(), String> {
 }
 
 pub fn stop(state: &AppState) {
-    if let Some(mut child) = state.zapret_child.lock().unwrap().take() {
+    if let Some(mut child) = crate::util::lock_mutex(&state.zapret_child).take() {
         let _ = child.kill();
         let _ = child.wait();
     }
     // Also stop instances started outside of the app (parity with taskkill).
     kill_all_winws();
-    *state.current_strategy.lock().unwrap() = None;
+    *crate::util::lock_mutex(&state.current_strategy) = None;
     logs::append("zapret", "winws.exe stopped");
 }
 

@@ -52,6 +52,14 @@ export interface Settings {
   lastSeenChangelogVersion: string | null;
 }
 
+/** Result of importing a shareable EasyZapret config JSON. */
+export interface ConfigImportResult {
+  settings: Settings;
+  listsWritten: number;
+  serviceApplied: boolean;
+  warnings: string[];
+}
+
 export type ServiceId = "discord" | "youtube" | "telegram" | "cloudflare" | "games" | "google";
 
 export interface ServiceHealth {

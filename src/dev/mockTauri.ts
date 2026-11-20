@@ -82,7 +82,7 @@ const state = {
       autoStartTg: false,
       startMinimized: false,
     },
-    lastSeenChangelogVersion: "0.6.0",
+    lastSeenChangelogVersion: "0.6.2",
   } as Record<string, unknown>,
 };
 
@@ -117,11 +117,57 @@ function logText(name: string): string {
 }
 
 const handlers: Record<string, Handler> = {
-  get_app_info: () => ({ version: "0.6.0", dataDir: "C:\\EasyZapret", isAdmin: true, isWindows: true }),
+  get_app_info: () => ({ version: "0.6.3", dataDir: "C:\\EasyZapret", isAdmin: true, isWindows: true }),
   get_settings: () => state.settings,
   patch_settings: (a) => {
     mergeObject(state.settings, a.patch as Record<string, unknown>);
     return state.settings;
+  },
+  export_settings: () =>
+    JSON.stringify(
+      {
+        format: "easyzapret-config",
+        formatVersion: 2,
+        exportedAt: new Date().toISOString(),
+        exportedByVersion: "0.6.3",
+        settings: { ...state.settings },
+        service: {
+          gameFilterMode: "all",
+          ipsetMode: "loaded",
+          autoUpdateCheck: true,
+          activeFakeDiscord: null,
+          activeFakeGame: null,
+        },
+        lists: {
+          "list-general-user.txt": "discord.com\n",
+          "list-exclude-user.txt": "domain.example.abc\n",
+          "ipset-exclude-user.txt": "203.0.113.113/32\n",
+          "ipset-all.txt": "1.1.1.1/32\n",
+        },
+      },
+      null,
+      2,
+    ),
+  import_settings: (a) => {
+    const incoming = JSON.parse(String(a.json ?? "{}")) as Record<string, unknown>;
+    const settingsBlob =
+      incoming.format === "easyzapret-config" && incoming.settings
+        ? (incoming.settings as Record<string, unknown>)
+        : incoming;
+    delete settingsBlob.easyzapretExportVersion;
+    delete settingsBlob.zapretVersion;
+    delete settingsBlob.tgVersion;
+    mergeObject(state.settings, settingsBlob);
+    const lists =
+      incoming.lists && typeof incoming.lists === "object"
+        ? Object.keys(incoming.lists as Record<string, unknown>).length
+        : 0;
+    return {
+      settings: state.settings,
+      listsWritten: lists,
+      serviceApplied: Boolean(incoming.service),
+      warnings: [],
+    };
   },
   get_components_state: () => ({
     zapretInstalled: true,
@@ -244,6 +290,7 @@ const handlers: Record<string, Handler> = {
     return state.warpMode;
   },
   warp_reset_keys: () => undefined,
+  warp_conflict_apps: () => ["ExitLag"],
   check_updates: () => [
     { component: "zapret", installed: "1.9.7", latest: "1.9.7", updateAvailable: false, releaseUrl: null, error: null },
     { component: "tgproxy", installed: "1.4.2", latest: "1.4.2", updateAvailable: false, releaseUrl: null, error: null },

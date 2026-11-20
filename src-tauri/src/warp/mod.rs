@@ -13,8 +13,19 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use tauri::State;
 
-use crate::util::run_capture;
+use crate::util::{self, run_capture};
 use crate::{logs, AppState};
+
+/// Process-name substrings that commonly break WARP + Zapret together.
+const CONFLICT_MARKERS: &[(&str, &str)] = &[
+    ("exitlag", "ExitLag"),
+    ("gearup", "GearUP"),
+    ("gear up", "GearUP"),
+    ("wtfast", "WTFast"),
+    ("mudfish", "Mudfish"),
+    ("goodbyedpi", "GoodbyeDPI"),
+    ("zapretgui", "ZapretGUI"),
+];
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,7 +102,7 @@ fn detect_warp_cli() -> Option<String> {
 /// the app is open is picked up without a restart.
 fn warp_cli() -> Option<String> {
     {
-        let cache = CLI_CACHE.lock().unwrap();
+        let cache = crate::util::lock_mutex(&CLI_CACHE);
         if let Some(ref p) = cache.path {
             return Some(p.clone());
         }
@@ -102,7 +113,7 @@ fn warp_cli() -> Option<String> {
         }
     }
     let resolved = detect_warp_cli();
-    let mut cache = CLI_CACHE.lock().unwrap();
+    let mut cache = crate::util::lock_mutex(&CLI_CACHE);
     cache.checked_at = Some(Instant::now());
     cache.path = resolved.clone();
     resolved
@@ -351,6 +362,30 @@ pub fn disconnect_quiet() {
     if let Some(cli) = warp_cli() {
         let _ = run(&cli, &["disconnect"], &["disconnect"]);
     }
+}
+
+/// Detects third-party bypass / gaming-VPN tools that often conflict with WARP.
+#[tauri::command]
+pub fn warp_conflict_apps() -> Vec<String> {
+    let Some(sys) = util::process_snapshot() else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for process in sys.processes().values() {
+        let name = process.name().to_string_lossy().to_ascii_lowercase();
+        let exe = process
+            .exe()
+            .map(|p| p.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        let haystack = format!("{name} {exe}");
+        for (marker, label) in CONFLICT_MARKERS {
+            if haystack.contains(marker) && !found.iter().any(|x| x == label) {
+                found.push((*label).to_string());
+            }
+        }
+    }
+    found.sort();
+    found
 }
 
 #[cfg(test)]

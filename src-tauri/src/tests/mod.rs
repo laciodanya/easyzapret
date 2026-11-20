@@ -563,7 +563,7 @@ async fn run_tests_inner(
     service_ids: &[String],
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let was_running_strategy = state.current_strategy.lock().unwrap().clone();
+    let was_running_strategy = crate::util::lock_mutex(&state.current_strategy).clone();
     if crate::zapret::process::winws_running() && was_running_strategy.is_none() {
         return Err(
             "winws.exe is already running outside this EasyZapret session; stop it before testing strategies"

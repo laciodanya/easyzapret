@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import i18n, { systemLanguage } from "../i18n";
 import { api } from "../lib/api";
 import { installAppUpdate, type AppUpdateProgress } from "../lib/appUpdate";
 import { errText } from "../lib/errors";
 import { toast } from "../lib/toast";
-import { useStore } from "../lib/store";
+import { applyTheme, useStore } from "../lib/store";
 import {
   Badge,
   Button,
@@ -55,6 +56,8 @@ export function SettingsPage() {
   const [checking, setChecking] = useState(false);
   const [appInstalling, setAppInstalling] = useState<AppUpdateProgress | null>(null);
   const [confirm, setConfirm] = useState<"zapret" | "tgproxy" | null>(null);
+  const [backupBusy, setBackupBusy] = useState<"export" | "import" | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let un: UnlistenFn | null = null;
@@ -116,6 +119,54 @@ export function SettingsPage() {
       await checkUpdates();
     } finally {
       setChecking(false);
+    }
+  }
+
+  async function exportSettings() {
+    setBackupBusy("export");
+    try {
+      const json = await api.exportSettings();
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `easyzapret-config-${appInfo?.version ?? "backup"}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast(t("settings.exportDone"), "ok");
+    } catch (e) {
+      toast(errText(t, e), "fail");
+    } finally {
+      setBackupBusy(null);
+    }
+  }
+
+  async function importSettingsFile(file: File | null) {
+    if (!file) return;
+    setBackupBusy("import");
+    try {
+      const json = await file.text();
+      const result = await api.importSettings(json);
+      const lang = result.settings.language ?? systemLanguage();
+      if (i18n.language !== lang) await i18n.changeLanguage(lang);
+      applyTheme(result.settings.theme);
+      useStore.setState({ settings: result.settings });
+      if (result.warnings.length > 0) {
+        toast(
+          t("settings.importDoneWithWarnings", {
+            lists: result.listsWritten,
+            warnings: result.warnings.length,
+          }),
+          "info",
+        );
+      } else {
+        toast(t("settings.importDone", { lists: result.listsWritten }), "ok");
+      }
+    } catch (e) {
+      toast(errText(t, e), "fail");
+    } finally {
+      setBackupBusy(null);
+      if (importInputRef.current) importInputRef.current.value = "";
     }
   }
 
@@ -282,6 +333,38 @@ export function SettingsPage() {
             checked={settings?.checkUpdatesOnStart ?? true}
             onChange={(v) => void updateSettings({ checkUpdatesOnStart: v })}
           />
+        </Row>
+      </Panel>
+
+      <Panel title={t("settings.backupTitle")} description={t("settings.backupDesc")}>
+        <Row title={t("settings.exportSettings")}>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={backupBusy !== null}
+            onClick={() => void exportSettings()}
+          >
+            {backupBusy === "export" && <Spinner size={14} />}
+            {t("settings.exportSettings")}
+          </Button>
+        </Row>
+        <Row title={t("settings.importSettings")}>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => void importSettingsFile(e.target.files?.[0] ?? null)}
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={backupBusy !== null}
+            onClick={() => importInputRef.current?.click()}
+          >
+            {backupBusy === "import" && <Spinner size={14} />}
+            {t("settings.importSettings")}
+          </Button>
         </Row>
       </Panel>
 

@@ -214,33 +214,25 @@ export default {
     title: "What's new in {{version}}",
     gotIt: "Got it",
     items: {
-      autopilot: {
-        title: "A more careful, smarter autopilot",
-        text: "Checks services through several addresses, confirms a failure, accounts for a missing internet connection, rolls back if a new strategy did not help, and remembers the ones that worked. Decisions show up in the log.",
+      reliability: {
+        title: "More reliable autopilot state",
+        text: "Autopilot state is written atomically, so strategies that worked on a network survive a failed write. Mutex poison no longer takes down the whole app.",
       },
-      tests: {
-        title: "Quick per-service tests",
-        text: "On the Tests tab pick Discord, YouTube or another service and compare strategies for it; several strategies can be ticked at once. The result is a strategy × service table.",
+      notifications: {
+        title: "Tray notifications",
+        text: "When the window is minimized, autopilot posts a Windows notification for strategy switches, degraded services and new networks.",
       },
-      logs: {
-        title: "Logs for GitHub",
-        text: "Levels, search, a “Problems” filter and a “Report for GitHub” button: system, settings and logs in a single text with no keys or user name.",
-      },
-      telegram: {
-        title: "Telegram Proxy: copyable details",
-        text: "Server, port and key copy separately, and the key can be revealed.",
+      settings: {
+        title: "Shareable config",
+        text: "From Settings you can save a JSON with all app options, lists and Service settings — then share it or restore it after reinstalling.",
       },
       warp: {
-        title: "WARP shows the real mode",
-        text: "The mode switch now reflects what is actually selected in the client.",
+        title: "ExitLag and GearUP conflicts",
+        text: "The WARP page detects ExitLag, GearUP and similar tools and warns that they often break Zapret + WARP.",
       },
-      design: {
-        title: "A new interface",
-        text: "Reworked design, dark and light themes, a separate Discord cache cleanup and diagnostics that scroll to their results.",
-      },
-      maintenance: {
-        title: "Autopilot across networks and list updates",
-        text: "Autopilot detects network changes and tries the strategy that already worked on that network first. IPSet and hosts updates appear in the top update notice; hosts is backed up before editing and personal entries are preserved.",
+      deps: {
+        title: "Dependencies and releases",
+        text: "Dependencies and GitHub Actions were updated. Release notes are now taken from CHANGELOG.md.",
       },
     },
   },
@@ -464,7 +456,10 @@ export default {
     worksTogetherTitle: "They work together",
     connectionTipsTitle: "If the connection is unstable",
     conflictNote:
-      "Try the WARP + DoH mode. If that does not help, disconnect WARP, wait a few seconds and connect again.",
+      "Try WARP + DoH and reset the keys. Close ExitLag, GearUP and other bypass tools — they conflict with Zapret + WARP. Watching YouTube through WARP + Tor makes a very long route and the connection can stay unstable.",
+    conflictsDetectedTitle: "Conflicting apps detected",
+    conflictsDetectedText:
+      "Currently running: {{apps}}. These often interfere with Cloudflare WARP. Close them and try again.",
   },
   logs: {
     title: "Logs",
@@ -560,6 +555,15 @@ export default {
     updateConfirmTg:
       "Telegram Proxy will be stopped before updating (TgWsProxy is closed). You can start it again afterwards. Continue?",
     updateContinue: "Stop and update",
+    backupTitle: "EasyZapret config",
+    backupDesc:
+      "One JSON file with all app settings, domain/IP lists and Service tab options. Save it for yourself or share it with someone else. Component versions and the system hosts file are not included.",
+    exportSettings: "Export config",
+    importSettings: "Import config",
+    exportDone: "Config saved to a file",
+    importDone: "Config applied (lists: {{lists}}). Restart Zapret if it is running.",
+    importDoneWithWarnings:
+      "Config applied (lists: {{lists}}) with {{warnings}} warning(s). Restart Zapret if it is running.",
   },
   adminWarning:
     "No administrator rights. Run EasyZapret as administrator — otherwise zapret and the services will not work.",

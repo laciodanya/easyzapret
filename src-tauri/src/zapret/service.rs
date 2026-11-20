@@ -268,7 +268,7 @@ pub fn zapret_status(state: State<'_, AppState>) -> ZapretStatus {
     let service_state = query_service_state("zapret");
     ZapretStatus {
         running: super::process::winws_running(),
-        current_strategy: state.current_strategy.lock().unwrap().clone(),
+        current_strategy: crate::util::lock_mutex(&state.current_strategy).clone(),
         service_installed: service_state.is_some(),
         service_state,
         service_strategy: registry_strategy(),

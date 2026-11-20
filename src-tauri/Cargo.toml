@@ -1,6 +1,6 @@
 [package]
 name = "easyzapret"
-version = "0.6.2"
+version = "0.6.3"
 description = "EasyZapret - desktop manager for Flowseal zapret-discord-youtube and tg-ws-proxy"
 authors = ["EasyZapret"]
 edition = "2021"
@@ -19,13 +19,14 @@ tauri-plugin-clipboard-manager = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 futures-util = "0.3"
 zip = "2"
-sysinfo = "0.33"
+sysinfo = "0.40"
 chrono = "0.4"
 dirs = "5"
 rand = "0.8"

@@ -38,6 +38,7 @@ export function WarpPage() {
   const [pendingMode, setPendingMode] = useState<WarpMode | null>(null);
   const [resetting, setResetting] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [conflicts, setConflicts] = useState<string[]>([]);
 
   const warp = status?.warp;
   const installed = warp?.installed ?? details?.installed ?? false;
@@ -62,6 +63,24 @@ export function WarpPage() {
     const timer = window.setInterval(() => void loadDetails(), 5000);
     return () => window.clearInterval(timer);
   }, [loadDetails]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refreshConflicts = async () => {
+      try {
+        const apps = await api.warpConflictApps();
+        if (!cancelled) setConflicts(apps);
+      } catch {
+        if (!cancelled) setConflicts([]);
+      }
+    };
+    void refreshConflicts();
+    const timer = window.setInterval(() => void refreshConflicts(), 8000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   async function toggle(value: boolean) {
     if (value && !zapretOn) {
@@ -164,6 +183,11 @@ export function WarpPage() {
           </Panel>
 
           {!zapretOn && !connected && <Note tone="warn">{t("warp.needZapret")}</Note>}
+          {conflicts.length > 0 && (
+            <Note tone="fail" title={t("warp.conflictsDetectedTitle")}>
+              {t("warp.conflictsDetectedText", { apps: conflicts.join(", ") })}
+            </Note>
+          )}
           {reportedMode && !asSelectable(reportedMode) && (
             <Note>{t("warp.otherMode", { mode: reportedMode })}</Note>
           )}

@@ -75,8 +75,13 @@ fn load_persisted() -> PersistedState {
 
 fn save_persisted(state: &PersistedState) {
     let _ = std::fs::create_dir_all(paths::data_dir());
-    if let Ok(text) = serde_json::to_string_pretty(state) {
-        let _ = std::fs::write(state_file(), text);
+    match serde_json::to_string_pretty(state) {
+        Ok(text) => {
+            if let Err(e) = crate::util::atomic_write(&state_file(), text.as_bytes()) {
+                logs::warn("autopilot", &format!("failed to persist state: {e}"));
+            }
+        }
+        Err(e) => logs::warn("autopilot", &format!("failed to serialize state: {e}")),
     }
 }
 
@@ -150,7 +155,7 @@ static CACHE: Mutex<RuntimeCache> = Mutex::new(RuntimeCache {
 });
 
 fn set_cache(patch: impl FnOnce(&mut RuntimeCache)) {
-    let mut g = CACHE.lock().unwrap();
+    let mut g = crate::util::lock_mutex(&CACHE);
     patch(&mut g);
 }
 
@@ -182,7 +187,7 @@ pub fn status() -> AutopilotStatus {
 pub fn status_with(service_installed: bool) -> AutopilotStatus {
     let cfg = settings::load();
     let persisted = load_persisted();
-    let cache = CACHE.lock().unwrap();
+    let cache = crate::util::lock_mutex(&CACHE);
     AutopilotStatus {
         enabled: cfg.autopilot.enabled,
         checking: cache.checking,
@@ -206,9 +211,64 @@ pub fn get_autopilot_status() -> AutopilotStatus {
     status()
 }
 
-/// Toast notification for the UI; the decision itself is logged by `note`.
+/// Toast for the UI and, when the window is hidden, a system notification.
 fn emit_toast(app: &AppHandle, event: AutopilotEvent) {
     let _ = app.emit("autopilot-event", &event);
+    let hidden = app
+        .get_webview_window("main")
+        .and_then(|window| window.is_visible().ok())
+        .is_some_and(|visible| !visible);
+    if !hidden {
+        return;
+    }
+    let en = settings::load()
+        .language
+        .as_deref()
+        .is_some_and(|lang| lang.eq_ignore_ascii_case("en"));
+    let body = match event.kind.as_str() {
+        "strategy_switched" => {
+            let to = event
+                .to_strategy
+                .as_deref()
+                .map(pretty)
+                .unwrap_or_else(|| event.message.clone());
+            if en {
+                format!("Autopilot switched strategy → {to}")
+            } else {
+                format!("Автопилот сменил стратегию → {to}")
+            }
+        }
+        "health_degraded" => {
+            let percent = event.health_percent.unwrap_or(0);
+            if en {
+                format!("Services degraded ({percent}%)")
+            } else {
+                format!("Сервисы деградировали ({percent}%)")
+            }
+        }
+        "no_fix" => {
+            if en {
+                "Autopilot could not find a working strategy".into()
+            } else {
+                "Автопилот не нашёл рабочую стратегию".into()
+            }
+        }
+        "network_changed" => {
+            if en {
+                "A new network was detected".into()
+            } else {
+                "Обнаружена новая сеть".into()
+            }
+        }
+        _ => return,
+    };
+    use tauri_plugin_notification::NotificationExt;
+    let _ = app
+        .notification()
+        .builder()
+        .title("EasyZapret")
+        .body(body)
+        .show();
 }
 
 // ---------------------------------------------------------------- measuring
@@ -424,10 +484,7 @@ fn mark_result(persisted: &mut PersistedState, strategy: &str, health: u32, heal
 fn current_strategy(state: &AppState) -> String {
     crate::zapret::service::service_strategy()
         .or_else(|| {
-            state
-                .current_strategy
-                .lock()
-                .unwrap()
+            crate::util::lock_mutex(&state.current_strategy)
                 .clone()
                 .or_else(|| settings::load().selected_strategy)
         })
@@ -1070,5 +1127,65 @@ mod tests {
             services: vec![svc("discord", 1, 5)],
         };
         assert!(low.degraded(&cfg));
+    }
+
+    #[test]
+    fn network_preferred_strategy_is_tried_first() {
+        let mut persisted = PersistedState::default();
+        persisted
+            .network_strategies
+            .insert("wifi-home".into(), "general (ALT5).bat".into());
+        let ordered = order_by_history(
+            names(&["general.bat", "general (ALT5).bat", "general (ALT).bat"]),
+            &persisted,
+            Some("wifi-home"),
+        );
+        assert_eq!(ordered[0], "general (ALT5).bat");
+    }
+
+    #[test]
+    fn custom_rotate_pool_keeps_only_allowed() {
+        let cfg = AutopilotSettings {
+            switch_mode: "rotate_custom".into(),
+            allowed_strategies: names(&["general (ALT).bat", "missing.bat"]),
+            ..Default::default()
+        };
+        let pool = resolve_candidate_pool(
+            &cfg,
+            &names(&["general.bat", "general (ALT).bat", "general (ALT2).bat"]),
+        );
+        assert_eq!(pool, names(&["general (ALT).bat"]));
+    }
+
+    #[test]
+    fn best_by_tests_respects_cap() {
+        let cfg = AutopilotSettings {
+            switch_mode: "best_by_tests".into(),
+            max_test_strategies: 2,
+            ..Default::default()
+        };
+        let pool = resolve_candidate_pool(
+            &cfg,
+            &names(&[
+                "general.bat",
+                "general (ALT).bat",
+                "general (ALT2).bat",
+                "general (SIMPLE FAKE).bat",
+            ]),
+        );
+        assert_eq!(pool.len(), 2);
+        assert_eq!(pool[0], "general.bat");
+    }
+
+    #[test]
+    fn mark_result_updates_stats_and_timestamps() {
+        let mut persisted = PersistedState::default();
+        mark_result(&mut persisted, "general.bat", 90, true);
+        mark_result(&mut persisted, "general.bat", 20, false);
+        let stat = persisted.stats.get("general.bat").unwrap();
+        assert_eq!(stat.ok, 1);
+        assert_eq!(stat.fail, 1);
+        assert_eq!(stat.last_health, 20);
+        assert!(stat.last_fail_ms >= stat.last_ok_ms);
     }
 }

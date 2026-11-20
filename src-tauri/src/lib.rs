@@ -1,6 +1,7 @@
 mod admin;
 mod autopilot;
 mod autostart;
+mod config_bundle;
 mod logs;
 mod network;
 mod paths;
@@ -102,7 +103,7 @@ static STATUS_CACHE: Mutex<StatusCache> = Mutex::new(StatusCache {
 static LAST_TRAY: Mutex<Option<Instant>> = Mutex::new(None);
 
 fn refresh_status_cache(force: bool) {
-    let mut cache = STATUS_CACHE.lock().unwrap();
+    let mut cache = util::lock_mutex(&STATUS_CACHE);
     if !force {
         if let Some(at) = cache.fetched_at {
             if at.elapsed() < Duration::from_millis(1800) {
@@ -129,7 +130,7 @@ fn maybe_refresh_tray(app: &AppHandle, state: &AppState) {
         return;
     }
     {
-        let last = LAST_TRAY.lock().unwrap();
+        let last = util::lock_mutex(&LAST_TRAY);
         if last
             .map(|t| t.elapsed() < Duration::from_secs(12))
             .unwrap_or(false)
@@ -137,7 +138,7 @@ fn maybe_refresh_tray(app: &AppHandle, state: &AppState) {
             return;
         }
     }
-    *LAST_TRAY.lock().unwrap() = Some(Instant::now());
+    *util::lock_mutex(&LAST_TRAY) = Some(Instant::now());
     tray::update_tray_now(app);
 }
 
@@ -157,13 +158,13 @@ fn get_status(app: AppHandle, state: State<'_, AppState>) -> FullStatus {
     }
 
     refresh_status_cache(false);
-    let cache = STATUS_CACHE.lock().unwrap();
+    let cache = util::lock_mutex(&STATUS_CACHE);
 
     warp::enforce_dependency(&state);
 
     let zapret = zapret::service::ZapretStatus {
         running: cache.winws_running,
-        current_strategy: state.current_strategy.lock().unwrap().clone(),
+        current_strategy: util::lock_mutex(&state.current_strategy).clone(),
         service_installed: cache.zapret_service.is_some(),
         service_state: cache.zapret_service.clone(),
         service_strategy: cache.zapret_service_strategy.clone(),
@@ -312,6 +313,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -364,6 +366,8 @@ pub fn run() {
             save_user_list,
             settings::get_settings,
             settings::patch_settings,
+            config_bundle::export_settings,
+            config_bundle::import_settings,
             updates::install_component,
             updates::get_components_state,
             updates::check_updates,
@@ -399,6 +403,7 @@ pub fn run() {
             warp::warp_disconnect,
             warp::warp_reset_keys,
             warp::warp_set_mode,
+            warp::warp_conflict_apps,
             autopilot::get_autopilot_status,
             autopilot::run_autopilot_check_now,
             autostart::get_autostart_state,

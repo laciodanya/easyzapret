@@ -501,7 +501,7 @@ fn extract_zip(archive_path: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_zip_entry(entry: &zip::read::ZipFile<'_>) -> Result<(), String> {
+fn validate_zip_entry<R: std::io::Read>(entry: &zip::read::ZipFile<'_, R>) -> Result<(), String> {
     let normalized = entry.name().replace('\\', "/");
     let bytes = normalized.as_bytes();
     let drive_prefixed = bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';

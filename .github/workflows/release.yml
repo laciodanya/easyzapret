@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag matching src-tauri/tauri.conf.json (for example v0.6.2)"
+        description: "Existing release tag (vVERSION or vVERSION-beta.N)"
         required: true
         type: string
 
@@ -23,6 +23,8 @@ jobs:
     outputs:
       release_tag: ${{ steps.release_meta.outputs.tag }}
       release_sha: ${{ steps.release_meta.outputs.sha }}
+      release_version: ${{ steps.release_meta.outputs.version }}
+      prerelease: ${{ steps.release_meta.outputs.prerelease }}
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -49,6 +51,7 @@ jobs:
         uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: src-tauri
+          shared-key: easyzapret-windows
 
       - name: Resolve and validate release tag
         id: release_meta
@@ -71,8 +74,11 @@ jobs:
             echo "::error::Version mismatch: tauri=$TAURI_VERSION package=$PACKAGE_VERSION cargo=$CARGO_VERSION"
             exit 1
           fi
-          if [ "$TAG" != "v$TAURI_VERSION" ]; then
-            echo "::error::Release tag $TAG does not match application version v$TAURI_VERSION"
+          PRERELEASE=false
+          if [[ "$TAG" == "v$TAURI_VERSION"-beta.* && "$TAG" =~ -beta\.[1-9][0-9]*$ ]]; then
+            PRERELEASE=true
+          elif [ "$TAG" != "v$TAURI_VERSION" ]; then
+            echo "::error::Release tag $TAG must match v$TAURI_VERSION or v$TAURI_VERSION-beta.N"
             exit 1
           fi
           if ! git show-ref --verify --quiet "refs/tags/$TAG"; then
@@ -91,6 +97,8 @@ jobs:
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$TAURI_VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
 
       - name: Install frontend dependencies
         run: npm ci
@@ -112,9 +120,14 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      - name: Prepare offline VPN components
+        run: node scripts/prepare-vpn-assets.mjs
+
       - name: Rust tests
         working-directory: src-tauri
-        run: cargo test --all-features
+        env:
+          EASYZAPRET_TEST_VPN_ARCHIVES: ${{ github.workspace }}/src-tauri/vpn-components
+        run: cargo test --locked --all-features
 
       - name: Build Tauri app
         shell: bash
@@ -123,7 +136,20 @@ jobs:
         run: |
           set -euo pipefail
           set -o pipefail
-          npm run tauri build -- --verbose --config '{"bundle":{"createUpdaterArtifacts":false}}' 2>&1 | tee build.log
+          npm run tauri build -- --verbose --config '{"bundle":{"createUpdaterArtifacts":false,"resources":["vpn-components/","licenses/Wintun-0.14.1.txt"]}}' 2>&1 | tee build.log
+
+      - name: Verify offline components are in the installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe
+          if ($installer.Count -ne 1) { throw "Expected one NSIS installer" }
+          $listing = & "$env:ProgramFiles/7-Zip/7z.exe" l $installer.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Unable to inspect installer" }
+          foreach ($asset in (Get-Content -Raw src-tauri/vpn-assets.json | ConvertFrom-Json)) {
+            if (-not ($listing -match [regex]::Escape($asset.archive))) {
+              throw "Installer is missing $($asset.archive)"
+            }
+          }
 
       - name: Sign updater artifact
         shell: bash
@@ -240,8 +266,8 @@ jobs:
 
       - name: Build release notes from CHANGELOG.md
         env:
-          TAG: ${{ needs.build-windows.outputs.release_tag }}
-        run: node scripts/extract-changelog.mjs "$TAG" release-notes.md
+          VERSION: ${{ needs.build-windows.outputs.release_version }}
+        run: node scripts/extract-changelog.mjs "$VERSION" release-notes.md
 
       - name: Publish draft release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
@@ -250,6 +276,7 @@ jobs:
           name: EasyZapret ${{ needs.build-windows.outputs.release_tag }}
           target_commitish: ${{ needs.build-windows.outputs.release_sha }}
           draft: true
+          prerelease: ${{ needs.build-windows.outputs.prerelease }}
           generate_release_notes: false
           body_path: release-notes.md
           fail_on_unmatched_files: true

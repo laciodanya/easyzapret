@@ -1,3 +1,5 @@
+mod vpn;
+
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -44,25 +46,6 @@ const TRUSTED_COMPONENT_ASSETS: &[TrustedComponentAsset] = &[
         name: "TgWsProxy_windows.exe",
         size: 21_805_650,
         sha256: "454205cbcf76f333934108d893b58a528373bce8096624e27f0b6dc16eea660f",
-    },
-];
-
-const VPN_ASSETS: &[TrustedComponentAsset] = &[
-    TrustedComponentAsset {
-        component: "vpn",
-        repo: "SagerNet/sing-box",
-        tag: "v1.12.12",
-        name: "sing-box-1.12.12-windows-amd64.zip",
-        size: 14_030_899,
-        sha256: "352c69526b76cd199539c0e02b4042d1acc109cde3a0a671a40af4e24290faa4",
-    },
-    TrustedComponentAsset {
-        component: "vpn",
-        repo: "XTLS/Xray-core",
-        tag: "v25.10.15",
-        name: "Xray-windows-64.zip",
-        size: 19_948_440,
-        sha256: "bdda983f3ea16e8ec33822e3a04f27e0983797885507e4e3b52c6ae33d602341",
     },
 ];
 
@@ -1033,15 +1016,29 @@ async fn install_tg(app: &AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn install_component(app: AppHandle, component: String) -> Result<String, String> {
-    let _install_guard = INSTALL_LOCK
-        .try_lock()
-        .map_err(|_| "another component installation is already running".to_string())?;
-    paths::ensure_dirs().map_err(|e| e.to_string())?;
+    let _install_guard = INSTALL_LOCK.try_lock().map_err(|_| {
+        if component == "vpn" {
+            "vpn_install_busy"
+        } else {
+            "another component installation is already running"
+        }
+    })?;
+    paths::ensure_dirs().map_err(|error| {
+        logs::error(
+            "app",
+            &format!("Cannot prepare component directory for {component}: {error}"),
+        );
+        if component == "vpn" {
+            "vpn_install_disk".into()
+        } else {
+            error.to_string()
+        }
+    })?;
     logs::append("app", &format!("install requested: {component}"));
     let result = match component.as_str() {
         "zapret" => install_zapret(&app).await,
         "tgproxy" => install_tg(&app).await,
-        "vpn" => install_vpn(&app).await,
+        "vpn" => vpn::install(&app).await,
         _ => Err(format!("unknown component: {component}")),
     };
     let _ = app.emit(
@@ -1060,70 +1057,6 @@ pub async fn install_component(app: AppHandle, component: String) -> Result<Stri
     if let Err(e) = &result {
         logs::error("app", &format!("install {component} failed: {e}"));
     }
-    result
-}
-
-async fn install_vpn(app: &AppHandle) -> Result<String, String> {
-    let _operation = crate::vpn::OPERATION.lock().await;
-    if !cfg!(windows) {
-        return Err("vpn_windows_only".into());
-    }
-    if crate::vpn::quick_status().running {
-        return Err("vpn_disconnect_to_install".into());
-    }
-    let staging = paths::data_dir().join(format!(".vpn-install-{}", rand::random::<u64>()));
-    std::fs::create_dir(&staging).map_err(|e| e.to_string())?;
-    let result = async {
-        for trusted in VPN_ASSETS {
-            let release = fetch_release_by_tag(trusted.repo, trusted.tag).await?;
-            let asset = release
-                .assets
-                .iter()
-                .find(|asset| asset.name == trusted.name)
-                .ok_or("VPN release asset missing")?;
-            let archive = staging.join(format!(
-                "{}.zip",
-                trusted.repo.split('/').next().unwrap_or("vpn")
-            ));
-            download_asset(app, trusted, asset, &archive).await?;
-            let extracted = staging.join(trusted.repo.split('/').next().unwrap_or("vpn"));
-            extract_zip(&archive, &extracted)?;
-            let exe = if trusted.repo == "SagerNet/sing-box" {
-                "sing-box.exe"
-            } else {
-                "xray.exe"
-            };
-            std::fs::copy(extracted.join(exe), staging.join(exe)).map_err(|e| e.to_string())?;
-            std::fs::copy(
-                extracted.join("LICENSE"),
-                staging.join(format!("{exe}.LICENSE")),
-            )
-            .map_err(|e| e.to_string())?;
-            std::fs::remove_file(&archive).map_err(|e| e.to_string())?;
-            std::fs::remove_dir_all(extracted).map_err(|e| e.to_string())?;
-        }
-        // Existing service command lines can refer to this filter across reinstalls.
-        let filter = paths::vpn_dir().join("winws-exclude.txt");
-        if filter.is_file() {
-            std::fs::copy(filter, staging.join("winws-exclude.txt")).map_err(|e| e.to_string())?;
-        }
-        let backup = paths::data_dir().join(format!(".vpn-backup-{}", rand::random::<u64>()));
-        std::fs::rename(paths::vpn_dir(), &backup).map_err(|e| e.to_string())?;
-        if let Err(error) = std::fs::rename(&staging, paths::vpn_dir()) {
-            std::fs::rename(&backup, paths::vpn_dir()).map_err(|restore| {
-                format!("VPN install failed: {error}; rollback failed: {restore}")
-            })?;
-            return Err(error.to_string());
-        }
-        let _ = std::fs::remove_dir_all(backup);
-        logs::append(
-            "vpn",
-            "Installed verified sing-box 1.12.12 and Xray 25.10.15",
-        );
-        Ok("sing-box 1.12.12 / Xray 25.10.15".into())
-    }
-    .await;
-    let _ = std::fs::remove_dir_all(staging);
     result
 }
 

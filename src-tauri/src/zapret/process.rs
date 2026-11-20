@@ -84,6 +84,7 @@ pub fn wait_for_winws_exit(max_wait: std::time::Duration) {
 /// Starts winws.exe with the arguments extracted from the selected strategy
 /// bat. Mirrors running `general*.bat` manually, minus the console window.
 pub fn start_strategy(state: &AppState, bat_name: &str) -> Result<(), String> {
+    let _transition = crate::vpn::without_vpn()?;
     let exe = paths::zapret_bin_dir().join("winws.exe");
     if !exe.exists() {
         return Err("winws.exe not found — install zapret first".into());

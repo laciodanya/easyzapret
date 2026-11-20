@@ -137,17 +137,7 @@ pub fn winws_args(bat_name: &str) -> Result<Vec<String>, String> {
     let bin = format!("{}\\", paths::zapret_bin_dir().display());
     let lists = format!("{}\\", paths::zapret_lists_dir().display());
     let root = format!("{}\\", paths::zapret_dir().display());
-    let mut args = parse_winws_args(&content, &bin, &lists, &root, &game_filter())?;
-    if let Some(filter) = crate::vpn::filter_argument() {
-        if args.iter().any(|arg| arg.starts_with("--wf-raw=")) {
-            if crate::vpn::filter_required() {
-                return Err("vpn_zapret_custom_filter".into());
-            }
-        } else {
-            args.push(filter);
-        }
-    }
-    Ok(args)
+    parse_winws_args(&content, &bin, &lists, &root, &game_filter())
 }
 
 /// Pure parsing core, separated from the filesystem for testability.

@@ -75,6 +75,7 @@ export default {
     service_installed: "Установлена служба zapret. Удалите её на вкладке «Сервис» перед запуском тестов.",
     dpi_suite_unavailable: "Не удалось загрузить список DPI-чекеров. Проверьте сеть.",
     zapret_required: "WARP включается только при работающем Zapret. Сначала включите Zapret.",
+    warp_process_scan_failed: "Не удалось прочитать список процессов Windows.",
     warp_not_installed: "Cloudflare WARP не установлен. Установите клиент 1.1.1.1 и повторите.",
     autopilot_busy: "Автопилот сейчас проверяет или меняет стратегию. Подождите минуту и повторите.",
     no_services: "Выберите хотя бы один сервис для проверки.",
@@ -473,6 +474,10 @@ export default {
     connectionTipsTitle: "Если соединение нестабильно",
     conflictNote:
       "Попробуйте режим WARP + DoH и сбросьте ключи. Закройте ExitLag, GearUP и другие обходы — они конфликтуют с Zapret + WARP. Если смотрите YouTube через WARP + Tor, маршрут слишком длинный и соединение может быть нестабильным.",
+    closeProcesses: "Закрыть процессы",
+    closingProcesses: "Закрытие…",
+    conflictsClosed: "Конфликтующие процессы закрыты.",
+    conflictsStillRunning: "Остались запущены {{apps}}. Если они запустились снова, закройте их из трея.",
     conflictsDetectedTitle: "Обнаружены конфликтующие программы",
     conflictsDetectedText:
       "Сейчас запущены: {{apps}}. Они часто мешают Cloudflare WARP. Закройте их и попробуйте снова.",

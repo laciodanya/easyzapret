@@ -516,11 +516,14 @@ pub async fn run_tests(
     services: Option<Vec<String>>,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
-    if state.autopilot_busy.load(Ordering::SeqCst) {
-        return Err("autopilot_busy".into());
-    }
-    if state.tests_running.swap(true, Ordering::SeqCst) {
-        return Err("tests_already_running".into());
+    {
+        let _transition = crate::vpn::without_vpn()?;
+        if state.autopilot_busy.load(Ordering::SeqCst) {
+            return Err("autopilot_busy".into());
+        }
+        if state.tests_running.swap(true, Ordering::SeqCst) {
+            return Err("tests_already_running".into());
+        }
     }
     state.tests_cancel.store(false, Ordering::SeqCst);
 

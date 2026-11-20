@@ -308,10 +308,10 @@ async fn wait_for_zapret(timeout: Duration) -> bool {
 }
 
 /// Runs after the UI has had a moment to paint. Zapret → WARP → Telegram Proxy.
-pub async fn run_boot_sequence(app: AppHandle) {
+pub async fn run_boot_sequence(app: AppHandle, vpn_active: bool) {
     let cfg = settings::load().autostart;
-    let wants_warp = cfg.auto_start_warp;
-    let wants_zapret = cfg.auto_start_zapret || wants_warp;
+    let wants_warp = cfg.auto_start_warp && !vpn_active;
+    let wants_zapret = (cfg.auto_start_zapret || wants_warp) && !vpn_active;
     let wants_tg = cfg.auto_start_tg;
 
     if !wants_zapret && !wants_warp && !wants_tg {

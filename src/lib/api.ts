@@ -38,6 +38,7 @@ const QUIET_COMMANDS = new Set([
   "zapret_status",
   "tg_status",
   "warp_details",
+  "warp_conflict_apps",
   "list_strategies",
   "read_user_lists",
   "read_log",
@@ -139,6 +140,7 @@ export const api = {
   /** Resolves with the mode warp-cli actually reports after the change. */
   warpSetMode: (mode: "warp" | "doh" | "warp+doh") => call<string>("warp_set_mode", { mode }),
   warpConflictApps: () => call<string[]>("warp_conflict_apps"),
+  warpCloseConflictApps: () => call<string[]>("warp_close_conflict_apps"),
 
   vpnDetails: () => call<VpnDetails>("vpn_details"),
   vpnImport: (input: string) => call<VpnDetails>("vpn_import", { input }),

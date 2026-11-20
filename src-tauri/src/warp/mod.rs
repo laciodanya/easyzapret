@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use tauri::State;
 
-use crate::util::{self, run_capture};
+use crate::util;
 use crate::{logs, AppState};
 
 /// Process-name substrings that commonly break WARP + Zapret together.
@@ -88,7 +88,7 @@ fn detect_warp_cli() -> Option<String> {
     {
         // Non-Windows builds are development-only and may use PATH.
         let prog = "warp-cli";
-        let (ok, _) = run_capture(prog, &["--version"]);
+        let (ok, _) = util::run_capture_timeout(prog, &["--version"], Duration::from_secs(4));
         if ok {
             Some(prog.to_string())
         } else {
@@ -124,7 +124,7 @@ fn warp_cli() -> Option<String> {
 fn run(cli: &str, modern: &[&str], legacy: &[&str]) -> (bool, String) {
     let mut args = vec!["--accept-tos"];
     args.extend_from_slice(modern);
-    let (ok, out) = run_capture(cli, &args);
+    let (ok, out) = util::run_capture_timeout(cli, &args, Duration::from_secs(4));
     if ok {
         return (true, out);
     }
@@ -135,8 +135,8 @@ fn run(cli: &str, modern: &[&str], legacy: &[&str]) -> (bool, String) {
         || low.contains("usage:")
         || low.contains("subcommand")
         || low.contains("--help");
-    if !legacy.is_empty() && (looks_like_bad_syntax || modern != legacy) {
-        let (ok2, out2) = run_capture(cli, legacy);
+    if !legacy.is_empty() && looks_like_bad_syntax {
+        let (ok2, out2) = util::run_capture_timeout(cli, legacy, Duration::from_secs(4));
         if ok2 || looks_like_bad_syntax {
             return (ok2, out2);
         }
@@ -253,10 +253,7 @@ pub fn warp_connect(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 pub fn connect_with_state(state: &AppState) -> Result<(), String> {
-    let _transition = util::lock_mutex(&crate::NETWORK_TRANSITION);
-    if crate::vpn::tun_running() {
-        return Err("vpn_warp_conflict".into());
-    }
+    let _transition = crate::vpn::without_vpn()?;
     let Some(cli) = warp_cli() else {
         return Err("warp_not_installed".into());
     };
@@ -292,6 +289,7 @@ pub fn connect_with_state(state: &AppState) -> Result<(), String> {
 
 #[tauri::command]
 pub fn warp_disconnect(state: State<'_, AppState>) -> Result<(), String> {
+    let _transition = util::lock_mutex(&crate::NETWORK_TRANSITION);
     let Some(cli) = warp_cli() else {
         return Err("warp_not_installed".into());
     };
@@ -305,10 +303,61 @@ pub fn warp_disconnect(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+fn confirmed_disconnected(output: &str) -> bool {
+    output.lines().any(|line| {
+        let line = line.trim().to_ascii_lowercase();
+        line == "disconnected"
+            || line.starts_with("status update: disconnected")
+            || line.starts_with("status: disconnected")
+            || line.contains("registration missing")
+            || line.contains("not registered")
+    })
+}
+
+/// Called under NETWORK_TRANSITION before VPN opens any sockets or adapters.
+pub fn disconnect_for_vpn(state: &AppState) -> Result<(), String> {
+    let Some(cli) = warp_cli()
+        .filter(|path| std::path::Path::new(path).is_file())
+        .or_else(detect_warp_cli)
+    else {
+        state.warp_active.store(false, Ordering::SeqCst);
+        return Ok(());
+    };
+    let (_, status) = run(&cli, &["status"], &["status"]);
+    if !confirmed_disconnected(&status) {
+        let (_, disconnect) = run(&cli, &["disconnect"], &["disconnect"]);
+        let deadline = Instant::now() + Duration::from_secs(6);
+        loop {
+            let (_, status) = run(&cli, &["status"], &["status"]);
+            if confirmed_disconnected(&status) {
+                break;
+            }
+            // The CLI cannot talk to a stopped Windows daemon.
+            if status.to_ascii_lowercase().contains("daemon")
+                && crate::zapret::service::query_service_state("CloudflareWARP").as_deref()
+                    == Some("STOPPED")
+            {
+                break;
+            }
+            if Instant::now() >= deadline {
+                logs::error(
+                    "vpn",
+                    &format!("WARP disconnect could not be confirmed: {disconnect}; {status}"),
+                );
+                return Err("vpn_warp_stop_failed".into());
+            }
+            std::thread::sleep(Duration::from_millis(300));
+        }
+    }
+    state.warp_active.store(false, Ordering::SeqCst);
+    Ok(())
+}
+
 /// Resets encryption keys the same way the official client's "Reset" does:
 /// delete the current registration and create a fresh one (new WireGuard keys).
 #[tauri::command]
 pub fn warp_reset_keys(state: State<'_, AppState>) -> Result<(), String> {
+    let _transition = crate::vpn::without_vpn()?;
     let Some(cli) = warp_cli() else {
         return Err("warp_not_installed".into());
     };
@@ -336,6 +385,7 @@ pub fn warp_reset_keys(state: State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 pub fn warp_set_mode(mode: String) -> Result<String, String> {
+    let _transition = crate::vpn::without_vpn()?;
     let Some(cli) = warp_cli() else {
         return Err("warp_not_installed".into());
     };
@@ -369,32 +419,107 @@ pub fn disconnect_quiet() {
 }
 
 /// Detects third-party bypass / gaming-VPN tools that often conflict with WARP.
+fn conflict_app_name(name: &str) -> Option<&'static str> {
+    let name = name.to_ascii_lowercase();
+    let name = name.strip_suffix(".exe")?;
+    CONFLICT_MARKERS.iter().find_map(|(marker, label)| {
+        (name == *marker
+            || name.strip_prefix(marker).is_some_and(|suffix| {
+                [
+                    "launcher",
+                    "service",
+                    "svc",
+                    "booster",
+                    "boosterservice",
+                    "client",
+                    "helper",
+                    "tray",
+                    "ui",
+                    "cli",
+                    "gui",
+                ]
+                .contains(&suffix.trim_start_matches([' ', '-', '_']))
+            }))
+        .then_some(*label)
+    })
+}
+
+fn conflict_app(process: &sysinfo::Process) -> Option<&'static str> {
+    conflict_app_name(&process.name().to_string_lossy())
+}
+
+fn conflict_apps(system: &sysinfo::System) -> Vec<String> {
+    let mut apps: Vec<_> = system
+        .processes()
+        .values()
+        .filter_map(conflict_app)
+        .collect();
+    apps.sort_unstable();
+    apps.dedup();
+    apps.into_iter().map(str::to_owned).collect()
+}
+
 #[tauri::command]
-pub fn warp_conflict_apps() -> Vec<String> {
-    let Some(sys) = util::process_snapshot() else {
-        return Vec::new();
-    };
-    let mut found = Vec::new();
-    for process in sys.processes().values() {
-        let name = process.name().to_string_lossy().to_ascii_lowercase();
-        let exe = process
-            .exe()
-            .map(|p| p.to_string_lossy().to_ascii_lowercase())
-            .unwrap_or_default();
-        let haystack = format!("{name} {exe}");
-        for (marker, label) in CONFLICT_MARKERS {
-            if haystack.contains(marker) && !found.iter().any(|x| x == label) {
-                found.push((*label).to_string());
+pub fn warp_conflict_apps() -> Result<Vec<String>, String> {
+    util::process_snapshot()
+        .as_ref()
+        .map(conflict_apps)
+        .ok_or_else(|| "warp_process_scan_failed".into())
+}
+
+#[tauri::command]
+pub async fn warp_close_conflict_apps() -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(|| {
+        let system = util::process_snapshot().ok_or("warp_process_scan_failed")?;
+        let mut attempted = false;
+        for process in system
+            .processes()
+            .values()
+            .filter(|p| conflict_app(p).is_some())
+        {
+            attempted = true;
+            if !process.kill() {
+                logs::warn(
+                    "warp",
+                    &format!("Could not close conflicting process {}", process.pid()),
+                );
             }
         }
-    }
-    found.sort();
-    found
+        if attempted {
+            std::thread::sleep(Duration::from_millis(700));
+        }
+        warp_conflict_apps()
+    })
+    .await
+    .map_err(|_| "warp_process_scan_failed")?
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detects_only_known_conflicting_executable_names() {
+        assert_eq!(conflict_app_name("ExitLagService.exe"), Some("ExitLag"));
+        assert_eq!(conflict_app_name("GearUP Booster.exe"), Some("GearUP"));
+        assert_eq!(conflict_app_name("GoodbyeDPI.exe"), Some("GoodbyeDPI"));
+        assert_eq!(conflict_app_name("exitlag-notes.exe"), None);
+        assert_eq!(conflict_app_name("notexitlag.exe"), None);
+        assert_eq!(conflict_app_name("gearup.dll"), None);
+    }
+
+    #[test]
+    fn confirms_warp_is_off_before_switching() {
+        assert!(confirmed_disconnected("Status update: Disconnected"));
+        assert!(confirmed_disconnected(
+            "Status update: Unable\nReason: Registration Missing"
+        ));
+        assert!(!confirmed_disconnected("Status update: Disconnecting"));
+        assert!(!confirmed_disconnected("Status update: Connected"));
+        assert!(!confirmed_disconnected(
+            "Unable to connect to the WARP daemon"
+        ));
+    }
 
     #[test]
     fn normalizes_warp_cli_mode_names() {

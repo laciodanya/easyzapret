@@ -352,12 +352,12 @@ pub fn run() {
             let boot_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(2)).await;
-                vpn::recover(&boot_app).await;
-                autostart::run_boot_sequence(boot_app.clone()).await;
-                vpn::auto_connect(&boot_app).await;
+                vpn::recover().await;
+                let vpn_active = vpn::auto_connect(&boot_app).await;
+                autostart::run_boot_sequence(boot_app, vpn_active).await;
             });
             autopilot::start_background_loop(app.handle().clone());
-            vpn::start_monitor(app.handle().clone());
+            vpn::start_monitor();
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -413,6 +413,7 @@ pub fn run() {
             warp::warp_reset_keys,
             warp::warp_set_mode,
             warp::warp_conflict_apps,
+            warp::warp_close_conflict_apps,
             vpn::vpn_details,
             vpn::vpn_import,
             vpn::vpn_save_settings,

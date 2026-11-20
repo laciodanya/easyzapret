@@ -1,4 +1,3 @@
-mod compatibility;
 mod config;
 mod import;
 mod storage;
@@ -6,14 +5,12 @@ mod storage;
 mod tests;
 mod types;
 
-pub use compatibility::filter_argument;
-pub use compatibility::required as filter_required;
 pub use types::VpnStatus;
 
 use serde_json::Value;
-use std::net::{IpAddr, TcpListener};
+use std::net::TcpListener;
 use std::process::{Child, Stdio};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{atomic::Ordering, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
 
@@ -54,9 +51,12 @@ pub fn installed() -> bool {
     paths::vpn_dir().join("sing-box.exe").is_file() && paths::vpn_dir().join("xray.exe").is_file()
 }
 
-pub fn tun_running() -> bool {
-    let runtime = util::lock_mutex(runtime());
-    !runtime.cores.is_empty() && runtime.mode.as_ref() != Some(&Mode::Proxy)
+pub(crate) fn without_vpn() -> Result<MutexGuard<'static, ()>, String> {
+    let transition = util::lock_mutex(&crate::NETWORK_TRANSITION);
+    if !util::lock_mutex(runtime()).cores.is_empty() {
+        return Err("vpn_disconnect_first".into());
+    }
+    Ok(transition)
 }
 
 pub fn quick_status() -> VpnStatus {
@@ -114,13 +114,13 @@ fn write_config(path: &std::path::Path, config: &Value) -> Result<(), String> {
     )
 }
 
-fn check_configuration(store: &Store) -> Result<Vec<std::path::PathBuf>, String> {
+fn check_configuration(store: &Store, suffix: &str) -> Result<Vec<std::path::PathBuf>, String> {
     if !installed() {
         return Err("vpn_not_installed".into());
     }
     let profile = selected(store)?;
-    let sing = runtime_file("sing-box");
-    let xray = runtime_file("xray");
+    let sing = runtime_file(&format!("sing-box{suffix}"));
+    let xray = runtime_file(&format!("xray{suffix}"));
     let mut files = vec![sing.clone()];
     let result = (|| {
         write_config(&sing, &config::build(&store.settings, profile)?)?;
@@ -210,37 +210,16 @@ fn attach_job(child: &Child) -> Result<std::os::windows::io::OwnedHandle, String
     Ok(job)
 }
 
-async fn server_ips(profile: &Profile) -> Result<Vec<IpAddr>, String> {
-    let addresses = tokio::time::timeout(
-        Duration::from_secs(10),
-        tokio::net::lookup_host((profile.server(), profile.port())),
-    )
-    .await
-    .map_err(|_| "vpn_server_dns_failed")?
-    .map_err(|_| "vpn_server_dns_failed")?;
-    let mut ips: Vec<_> = addresses.map(|a| a.ip()).collect();
-    ips.sort();
-    ips.dedup();
-    if ips.is_empty() {
-        return Err("vpn_server_dns_failed".into());
-    }
-    Ok(ips)
-}
-
-fn start(state: &AppState, store: &Store, ips: &[IpAddr]) -> Result<(), String> {
+fn start(state: &AppState, store: &Store) -> Result<(), String> {
     if !cfg!(windows) {
         return Err("vpn_windows_only".into());
     }
     let _transition = util::lock_mutex(&crate::NETWORK_TRANSITION);
-    let _preparing = compatibility::Preparing::begin();
-    if store.settings.mode != Mode::Proxy
-        && (state.warp_active.load(std::sync::atomic::Ordering::SeqCst)
-            || crate::warp::quick_status().connected)
-    {
-        return Err("vpn_warp_conflict".into());
+    if state.tests_running.load(Ordering::SeqCst) {
+        return Err("vpn_zapret_tests_running".into());
     }
     let profile = selected(store)?;
-    let files = check_configuration(store)?;
+    let files = check_configuration(store, "")?;
     let mut tunnel_spawned = false;
     let result = (|| {
         let ports = if profile.engine == "xray" {
@@ -255,7 +234,9 @@ fn start(state: &AppState, store: &Store, ips: &[IpAddr]) -> Result<(), String> 
             .collect();
         let reservations = reservations.map_err(|_| "vpn_port_in_use")?;
         drop(reservations);
-        compatibility::prepare(state, ips, profile.port(), None)?;
+        crate::warp::disconnect_for_vpn(state)?;
+        crate::zapret::service::remove_for_vpn(state)?;
+        crate::refresh_status_cache(true);
         let mut cores = Vec::new();
         if profile.engine == "xray" {
             cores.push(spawn_core("xray.exe", &runtime_file("xray"))?);
@@ -293,10 +274,16 @@ fn start(state: &AppState, store: &Store, ips: &[IpAddr]) -> Result<(), String> 
         let interface_index = if store.settings.mode == Mode::Proxy {
             None
         } else {
-            let index = tunnel_interface()?.ok_or("vpn_tunnel_missing")?;
-            // The interface exclusion also covers connections opened before TUN started.
-            compatibility::prepare(state, ips, profile.port(), Some(index))?;
-            Some(index)
+            let deadline = std::time::Instant::now() + Duration::from_secs(8);
+            loop {
+                if let Some(index) = tunnel_interface()? {
+                    break Some(index);
+                }
+                if std::time::Instant::now() >= deadline {
+                    return Err("vpn_tunnel_missing".into());
+                }
+                std::thread::sleep(Duration::from_millis(300));
+            }
         };
         for core in &mut cores {
             if core
@@ -322,7 +309,6 @@ fn start(state: &AppState, store: &Store, ips: &[IpAddr]) -> Result<(), String> 
         for file in files {
             let _ = std::fs::remove_file(file);
         }
-        let _ = compatibility::reset(state, true);
         if tunnel_spawned {
             let _ = cleanup_tunnel_routes(None);
         }
@@ -330,7 +316,7 @@ fn start(state: &AppState, store: &Store, ips: &[IpAddr]) -> Result<(), String> 
     result
 }
 
-pub fn shutdown(state: &AppState, restart_zapret: bool) -> Result<(), String> {
+pub fn shutdown() -> Result<(), String> {
     let _transition = util::lock_mutex(&crate::NETWORK_TRANSITION);
     let (cores, files, interface_index) = {
         let mut runtime = util::lock_mutex(runtime());
@@ -350,7 +336,6 @@ pub fn shutdown(state: &AppState, restart_zapret: bool) -> Result<(), String> {
     for file in files {
         let _ = std::fs::remove_file(file);
     }
-    compatibility::reset(state, restart_zapret)?;
     routes?;
     logs::append("vpn", "VPN stopped");
     Ok(())
@@ -359,9 +344,10 @@ pub fn shutdown(state: &AppState, restart_zapret: bool) -> Result<(), String> {
 #[cfg(windows)]
 fn tunnel_interface() -> Result<Option<u32>, String> {
     let script = format!("$ErrorActionPreference='Stop'; $a=Get-NetAdapter -Name '{}' -IncludeHidden -ErrorAction SilentlyContinue; if ($a) {{ [Console]::Write($a.ifIndex) }}",config::TUN_NAME);
-    let (ok, out) = util::run_capture(
+    let (ok, out) = util::run_capture_timeout(
         "powershell",
         &["-NoProfile", "-NonInteractive", "-Command", &script],
+        Duration::from_secs(6),
     );
     if !ok {
         return Err("vpn_tunnel_query_failed".into());
@@ -386,9 +372,10 @@ fn cleanup_tunnel_routes(index: Option<u32>) -> Result<(), String> {
         .map(|index| format!(" -and $_.InterfaceIndex -eq {index}"))
         .unwrap_or_default();
     let script = format!("$ErrorActionPreference='Stop'; Get-NetRoute -ErrorAction SilentlyContinue | Where-Object {{ $_.InterfaceAlias -eq '{}'{index_condition} }} | Remove-NetRoute -Confirm:$false -ErrorAction Stop",config::TUN_NAME);
-    let (ok, _) = util::run_capture(
+    let (ok, _) = util::run_capture_timeout(
         "powershell",
         &["-NoProfile", "-NonInteractive", "-Command", &script],
+        Duration::from_secs(8),
     );
     if ok {
         Ok(())
@@ -402,34 +389,26 @@ fn cleanup_tunnel_routes(_index: Option<u32>) -> Result<(), String> {
     Ok(())
 }
 
-async fn apply(state: &AppState, store: Store) -> Result<VpnDetails, String> {
+fn apply(state: &AppState, store: Store) -> Result<VpnDetails, String> {
     config::validate_settings(&store.settings)?;
     let previous = util::lock_mutex(runtime()).active.clone();
     if let Some(previous) = previous {
-        let new_ips = if store.selected_profile.is_some() {
-            config::build(&store.settings, selected(&store)?)?;
-            server_ips(selected(&store)?).await?
-        } else {
-            Vec::new()
-        };
-        // Validate before stopping a working connection.
         if store.selected_profile.is_some() {
-            check_configuration(&store)?;
+            // Validate before stopping a working connection.
+            for file in check_configuration(&store, "-check")? {
+                let _ = std::fs::remove_file(file);
+            }
         }
-        shutdown(state, true)?;
+        shutdown()?;
         let result = (|| {
             if store.selected_profile.is_some() {
-                start(state, &store, &new_ips)?;
+                start(state, &store)?;
             }
             storage::save(&store)
         })();
         if let Err(error) = result {
-            let _ = shutdown(state, true);
-            let restored = match server_ips(selected(&previous)?).await {
-                Ok(ips) => start(state, &previous, &ips),
-                Err(e) => Err(e),
-            };
-            if restored.is_err() {
+            let _ = shutdown();
+            if start(state, &previous).is_err() {
                 util::lock_mutex(runtime()).error = Some("vpn_restore_failed".into());
                 return Err(format!("{error}; vpn_restore_failed"));
             }
@@ -458,7 +437,7 @@ pub async fn vpn_save_settings(
     let _operation = OPERATION.lock().await;
     let mut store = storage::load()?;
     store.settings = settings;
-    apply(&state, store).await
+    apply(&state, store)
 }
 
 #[tauri::command]
@@ -472,7 +451,7 @@ pub async fn vpn_select_profile(
         return Err("vpn_select_profile".into());
     }
     store.selected_profile = Some(id);
-    apply(&state, store).await
+    apply(&state, store)
 }
 
 #[tauri::command]
@@ -486,7 +465,7 @@ pub async fn vpn_remove_profile(
     if store.selected_profile.as_ref() == Some(&id) {
         store.selected_profile = store.profiles.first().map(|p| p.id.clone());
     }
-    apply(&state, store).await
+    apply(&state, store)
 }
 
 #[tauri::command]
@@ -524,7 +503,7 @@ pub async fn vpn_update_profile(
     profile.outbound = replacement.outbound;
     profile.engine = replacement.engine;
     import::validate_profile(profile)?;
-    apply(&state, store).await
+    apply(&state, store)
 }
 
 async fn fetch_subscription(raw: &str) -> Result<(String, Vec<Profile>), String> {
@@ -645,7 +624,7 @@ pub async fn vpn_import(state: State<'_, AppState>, input: String) -> Result<Vpn
     if store.selected_profile.is_none() {
         store.selected_profile = store.profiles.first().map(|p| p.id.clone());
     }
-    apply(&state, store).await
+    apply(&state, store)
 }
 
 #[tauri::command]
@@ -671,7 +650,7 @@ pub async fn vpn_refresh_subscription(
     if store.profiles.len() > 512 {
         return Err("vpn_too_many_profiles".into());
     }
-    apply(&state, store).await
+    apply(&state, store)
 }
 
 #[tauri::command]
@@ -692,28 +671,34 @@ pub async fn vpn_remove_subscription(
     {
         store.selected_profile = store.profiles.first().map(|p| p.id.clone());
     }
-    apply(&state, store).await
+    apply(&state, store)
 }
 
 #[tauri::command]
-pub async fn vpn_connect(state: State<'_, AppState>) -> Result<(), String> {
-    let _operation = OPERATION.lock().await;
+pub async fn vpn_connect(app: AppHandle) -> Result<(), String> {
+    let _operation = OPERATION.try_lock().map_err(|_| "vpn_busy")?;
     if !util::lock_mutex(runtime()).cores.is_empty() {
         return Ok(());
     }
-    let store = storage::load()?;
-    let ips = server_ips(selected(&store)?).await?;
-    let result = start(&state, &store, &ips);
+    let result = tokio::task::spawn_blocking(move || {
+        util::lock_mutex(runtime()).error = None;
+        start(&app.state::<AppState>(), &storage::load()?)
+    })
+    .await
+    .map_err(|_| "vpn_start_failed")?;
     if let Err(error) = &result {
         util::lock_mutex(runtime()).error = Some(error.clone());
+        logs::error("vpn", error);
     }
     result
 }
 
 #[tauri::command]
-pub async fn vpn_disconnect(state: State<'_, AppState>) -> Result<(), String> {
-    let _operation = OPERATION.lock().await;
-    shutdown(&state, true)?;
+pub async fn vpn_disconnect() -> Result<(), String> {
+    let _operation = OPERATION.try_lock().map_err(|_| "vpn_busy")?;
+    tokio::task::spawn_blocking(shutdown)
+        .await
+        .map_err(|_| "vpn_cleanup_failed")??;
     util::lock_mutex(runtime()).error = None;
     Ok(())
 }
@@ -800,7 +785,7 @@ pub async fn vpn_pick_app() -> Result<Option<String>, String> {
     }
 }
 
-pub fn start_monitor(app: AppHandle) {
+pub fn start_monitor() {
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(2)).await;
@@ -815,8 +800,7 @@ pub fn start_monitor(app: AppHandle) {
                     .any(|core| !matches!(core.child.try_wait(), Ok(None)))
             };
             if exited {
-                let state = app.state::<AppState>();
-                let cleanup = shutdown(&state, true);
+                let cleanup = shutdown();
                 util::lock_mutex(runtime()).error = Some(
                     if cleanup.is_ok() {
                         "vpn_core_exited"
@@ -826,42 +810,52 @@ pub fn start_monitor(app: AppHandle) {
                     .into(),
                 );
                 logs::error("vpn", "VPN core exited, managed tunnel stopped");
-            } else if tun_running() && crate::warp::quick_status().connected {
-                let state = app.state::<AppState>();
-                let _ = shutdown(&state, true);
-                util::lock_mutex(runtime()).error = Some("vpn_warp_conflict".into());
+            } else if quick_status().running
+                && (crate::warp::quick_status().connected || crate::warp::zapret_running())
+            {
+                let error = if shutdown().is_ok() {
+                    "vpn_external_conflict"
+                } else {
+                    "vpn_cleanup_failed"
+                };
+                util::lock_mutex(runtime()).error = Some(error.into());
+                logs::warn("vpn", error);
             }
         }
     });
 }
 
-pub async fn auto_connect(app: &AppHandle) {
+pub async fn auto_connect(app: &AppHandle) -> bool {
     let _operation = OPERATION.lock().await;
-    let result = async {
+    if quick_status().running {
+        return true;
+    }
+    let result = (|| {
         let store = storage::load()?;
         if !store.settings.auto_connect {
-            return Ok(());
+            return Ok(false);
         }
-        let ips = server_ips(selected(&store)?).await?;
-        start(&app.state::<AppState>(), &store, &ips)
-    }
-    .await;
-    if let Err(error) = result {
+        start(&app.state::<AppState>(), &store)?;
+        Ok(true)
+    })();
+    result.unwrap_or_else(|error| {
         util::lock_mutex(runtime()).error = Some(error);
         logs::warn("vpn", "VPN autoconnect failed, open VPN settings");
-    }
+        false
+    })
 }
 
-pub async fn recover(app: &AppHandle) {
+pub async fn recover() {
     let _operation = OPERATION.lock().await;
-    let filter = std::fs::read_to_string(compatibility::filter_path()).unwrap_or_default();
-    if !filter.contains("ifIdx") && !filter.contains("DstPort") {
-        return;
-    }
-    if cleanup_tunnel_routes(None)
-        .and_then(|_| compatibility::reset(&app.state::<AppState>(), true))
-        .is_err()
-    {
+    // Previous versions left this file in the installed zapret service command.
+    // Keep it readable until that service is deleted or reinstalled.
+    let filter = paths::vpn_dir().join("winws-exclude.txt");
+    let legacy = if filter.is_file() {
+        util::atomic_write(&filter, b"true")
+    } else {
+        Ok(())
+    };
+    if legacy.and_then(|_| cleanup_tunnel_routes(None)).is_err() {
         util::lock_mutex(runtime()).error = Some("vpn_cleanup_failed".into());
         logs::warn("vpn", "Recovery of the previous VPN session failed");
     }

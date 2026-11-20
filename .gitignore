@@ -26,3 +26,6 @@ dist-ssr
 # Updater signing keys (never commit)
 *.key
 *.key.pub
+
+# Verified VPN archives staged for release packaging
+/src-tauri/vpn-components/

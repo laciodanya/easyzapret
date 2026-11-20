@@ -53,6 +53,7 @@ const state = {
   tgRunning: false,
   warpConnected: false,
   warpMode: "warp",
+  warpConflicts: ["ExitLag", "GearUP"],
   autopilotEnabled: true,
   testsRunning: false,
   settings: {
@@ -125,11 +126,20 @@ function logText(name: string): string {
 }
 
 const handlers: Record<string, Handler> = {
-  install_component: ({ component }) => {
-    if (component === "vpn") vpn.status.installed = true;
+  install_component: async ({ component }) => {
+    if (component !== "vpn") return "preview";
+    const fail = new URLSearchParams(window.location.search).has("vpn-install-error");
+    for (const asset of ["sing-box", "Xray"]) {
+      for (const phase of fail ? ["downloading", "retrying"] : ["verifying", "extracting"]) {
+        emit("vpn-install-progress", { phase, asset, downloaded: 12_000_000, total: 14_000_000 });
+        await new Promise((resolve) => window.setTimeout(resolve, 300));
+      }
+      if (fail) throw new Error("vpn_install_timeout");
+    }
+    vpn.status.installed = true;
     return "preview";
   },
-  get_app_info: () => ({ version: "0.6.3", dataDir: "C:\\EasyZapret", isAdmin: true, isWindows: true }),
+  get_app_info: () => ({ version: "0.7.0", dataDir: "C:\\EasyZapret", isAdmin: true, isWindows: true }),
   get_settings: () => state.settings,
   patch_settings: (a) => {
     mergeObject(state.settings, a.patch as Record<string, unknown>);
@@ -227,9 +237,14 @@ const handlers: Record<string, Handler> = {
   },
   vpn_import: ({ input }) => {
     const id = crypto.randomUUID();
-    vpn.profiles.push({ id, name: "VPN preview", protocol: "vless", server: "vpn.example.com", subscriptionId: null });
+    const isSubscription = String(input).startsWith("https://");
+    const subscriptionId = isSubscription ? crypto.randomUUID() : null;
+    if (subscriptionId) {
+      vpn.subscriptions.push({ id: subscriptionId, name: "Demo subscription", host: "vpn.example.com", updatedAt: new Date().toISOString() });
+      vpn.profiles.push({ id: crypto.randomUUID(), name: "Sweden", protocol: "trojan", server: "se.example.com", subscriptionId });
+    }
+    vpn.profiles.push({ id, name: isSubscription ? "Germany" : "VPN preview", protocol: "vless", server: "de.example.com", subscriptionId });
     vpn.selectedProfile ??= id;
-    void input;
     return structuredClone(vpn);
   },
   vpn_select_profile: ({ id }) => { vpn.selectedProfile = String(id); return structuredClone(vpn); },
@@ -239,9 +254,11 @@ const handlers: Record<string, Handler> = {
     return structuredClone(vpn);
   },
   vpn_connect: () => {
-    if (state.warpConnected && vpn.settings.mode !== "proxy") throw new Error("vpn_warp_conflict");
+    if (!vpn.status.installed) throw new Error("vpn_not_installed");
     if (!vpn.selectedProfile) throw new Error("vpn_select_profile");
     if (["only_apps", "bypass_apps"].includes(vpn.settings.mode) && vpn.settings.apps.length === 0) throw new Error("vpn_select_apps");
+    state.zapretRunning = false;
+    state.warpConnected = false;
     vpn.status.running = true;
     vpn.status.activeProfile = vpn.selectedProfile;
   },
@@ -284,6 +301,7 @@ const handlers: Record<string, Handler> = {
   }),
   run_autopilot_check_now: () => handlers.get_autopilot_status({}),
   start_zapret: () => {
+    if (vpn.status.running) throw new Error("vpn_disconnect_first");
     state.zapretRunning = true;
   },
   stop_zapret: () => {
@@ -329,7 +347,7 @@ const handlers: Record<string, Handler> = {
     detail: null,
   }),
   warp_connect: () => {
-    if (vpn.status.running && vpn.settings.mode !== "proxy") throw new Error("vpn_warp_conflict");
+    if (vpn.status.running) throw new Error("vpn_disconnect_first");
     state.warpConnected = true;
   },
   warp_disconnect: () => {
@@ -340,7 +358,8 @@ const handlers: Record<string, Handler> = {
     return state.warpMode;
   },
   warp_reset_keys: () => undefined,
-  warp_conflict_apps: () => ["ExitLag"],
+  warp_conflict_apps: () => [...state.warpConflicts],
+  warp_close_conflict_apps: () => { state.warpConflicts = []; return []; },
   check_updates: () => [
     { component: "zapret", installed: "1.9.7", latest: "1.9.7", updateAvailable: false, releaseUrl: null, error: null },
     { component: "tgproxy", installed: "1.4.2", latest: "1.4.2", updateAvailable: false, releaseUrl: null, error: null },

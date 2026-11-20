@@ -3,9 +3,10 @@ import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import { toast } from "../lib/toast";
-import type { VpnDetails, VpnProfile, VpnRule, VpnSettings } from "../lib/vpn";
+import { vpnErrorText, type VpnDetails, type VpnProfile, type VpnRule, type VpnSettings } from "../lib/vpn";
+import { VpnServerButton, VpnServerPicker } from "../components/VpnServerPicker";
 import { Badge, Button, ConfirmModal, Empty, IconButton, Input, Modal, Note, PageHeader,
-  Panel, Row, Select, Spinner, Switch, Tabs, cn } from "../components/ui";
+  Panel, Row, Select, Spinner, Switch, Tabs } from "../components/ui";
 
 const TEXTAREA = "selectable w-full rounded-control border border-line-strong bg-sunken p-3 font-mono text-[13px] text-fg focus:border-accent";
 
@@ -14,6 +15,8 @@ export function VpnPage() {
   const appInfo = useStore((s) => s.appInfo);
   const status = useStore((s) => s.status);
   const refreshStatus = useStore((s) => s.refreshStatus);
+  const { vpnInstalling, vpnInstallProgress, vpnInstallError, installVpn, setPage } = useStore();
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [details, setDetails] = useState<VpnDetails | null>(null);
   const [draft, setDraft] = useState<VpnSettings | null>(null);
   const [tab, setTab] = useState("profiles");
@@ -41,14 +44,11 @@ export function VpnPage() {
   const installed = vpn?.installed ?? details?.status.installed ?? false;
   const dirty = !!draft && !!details && JSON.stringify(draft) !== JSON.stringify(details.settings);
   const selected = details?.profiles.find((p) => p.id === details.selectedProfile);
-  const warpConflict = !!status?.warp.connected && (draft?.mode ?? "only_apps") !== "proxy";
-
-  function errorText(error: unknown) {
-    const raw = String(error);
-    const code = raw.split(/[\s;(]/)[0];
-    const message = t(`vpn.errors.${code}`, { defaultValue: t("vpn.failed") });
-    return raw.includes("vpn_previous_restored") ? `${message} ${t("vpn.restored")}` : message;
-  }
+  const usesServices = !!(status?.zapret.serviceInstalled || status?.zapret.windivertState);
+  const switching = !running && !!(status?.warp.connected || status?.zapret.running || usesServices);
+  const unsupported = appInfo?.isWindows === false;
+  const progress = vpnInstallProgress;
+  const needsApps = !!draft && ["only_apps", "bypass_apps"].includes(draft.mode) && draft.apps.length === 0;
 
   function accept(next: VpnDetails) {
     setDetails(next);
@@ -64,7 +64,8 @@ export function VpnPage() {
       await task();
       await refreshStatus();
     } catch (error) {
-      toast(errorText(error), "fail");
+      toast(vpnErrorText(t, error), "fail");
+      await refreshStatus();
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -74,7 +75,7 @@ export function VpnPage() {
   useEffect(() => {
     let active = true;
     api.vpnDetails().then((next) => { if (active) accept(next); })
-      .catch((error) => { if (active) setLoadError(errorText(error)); });
+      .catch((error) => { if (active) setLoadError(vpnErrorText(t, error)); });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -109,7 +110,7 @@ export function VpnPage() {
     <>
       <PageHeader title="VPN" description={t("vpn.description")} action={
         <Button variant={running ? "secondary" : "primary"} icon="power"
-          disabled={busy || !details || (!running && (!installed || !selected || dirty || warpConflict))}
+          disabled={busy || vpnInstalling || unsupported || !details || (!running && (!installed || !selected || dirty || needsApps))}
           onClick={() => void perform(async () => {
             if (running) await api.vpnDisconnect();
             else await api.vpnConnect();
@@ -132,15 +133,41 @@ export function VpnPage() {
         {appInfo && !appInfo.isWindows && <Note>{t("vpn.windowsOnly")}</Note>}
         {loadError && <Note tone="fail" action={<Button size="sm" disabled={busy}
           onClick={() => void perform(async () => accept(await api.vpnDetails()))}>{t("vpn.retry")}</Button>}>{loadError}</Note>}
-        {vpn?.error && <Note tone="fail">{errorText(vpn.error)}</Note>}
-        {warpConflict && <Note tone="warn">{t("vpn.warpConflict")}</Note>}
-        {!installed && <Note title={t("vpn.installTitle")} action={
-          <Button icon="download" disabled={busy} onClick={() => void perform(async () => {
-            await api.installComponent("vpn");
-            accept(await api.vpnDetails());
-            toast(t("vpn.installed"), "ok");
-          })}>{busy ? t("vpn.installing") : t("vpn.install")}</Button>
-        }>{t("vpn.installDescription")}</Note>}
+        {vpn?.error && <Note tone="fail">{vpnErrorText(t, vpn.error)}</Note>}
+        {switching && <Note tone="warn">{t("vpn.switchToVpn")}</Note>}
+        {installed && selected && needsApps && tab !== "routing" && <Note action={
+          <Button size="sm" onClick={() => setTab("routing")}>{t("vpn.openRouting")}</Button>
+        }>{t("vpn.errors.vpn_select_apps")}</Note>}
+        {(!installed || vpnInstalling) && !unsupported && (
+          <Note title={t("vpn.installTitle")} action={
+            <Button icon="download" disabled={busy || vpnInstalling}
+              onClick={() => void installVpn()}>
+              {t(vpnInstalling ? "vpn.installing" : vpnInstallError ? "vpn.retry" : "vpn.install")}
+            </Button>
+          }>
+            {vpnInstalling ? (
+              <div role="status" className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Spinner size={13} />
+                  {t(progress ? `vpn.installPhases.${progress.phase}` : "vpn.installPhases.preparing", { asset: progress?.asset })}
+                </div>
+                {progress?.phase === "downloading" && (
+                  <div className="space-y-1">
+                    <progress aria-label={t("vpn.downloadProgress")} max={progress.total} value={progress.downloaded}
+                      className="block h-2 w-full min-w-36 accent-accent" />
+                    <span className="tabular-nums">{t("vpn.downloadSize", {
+                      current: (progress.downloaded / 1048576).toFixed(1),
+                      total: (progress.total / 1048576).toFixed(1),
+                    })}</span>
+                  </div>
+                )}
+              </div>
+            ) : t("vpn.installDescription")}
+          </Note>
+        )}
+        {vpnInstallError && <Note tone="fail" action={
+          <Button size="sm" onClick={() => setPage("logs")}>{t("vpn.openLogs")}</Button>
+        }>{vpnInstallError}</Note>}
         {dirty && <Note>{running ? t("vpn.pendingReconnect") : t("vpn.pendingSave")}</Note>}
       </div>
       {details && draft && <>
@@ -152,27 +179,12 @@ export function VpnPage() {
         {tab === "profiles" && <div className="space-y-5">
           <Panel title={t("vpn.profiles")} action={<Button icon="plus" disabled={busy || dirty}
             onClick={() => setImportOpen(true)}>{t("vpn.add")}</Button>}>
-            {details.profiles.length === 0 && <Empty>{t("vpn.noProfiles")}</Empty>}
-            {details.profiles.map((profile) => <div key={profile.id} className="flex items-center gap-3 py-3">
-              <button type="button" aria-pressed={details.selectedProfile === profile.id}
-                disabled={busy || dirty} className="flex min-w-0 flex-1 items-center gap-3 rounded-control py-1 text-left disabled:opacity-50"
-                onClick={() => void perform(async () => { accept(await api.vpnSelectProfile(profile.id)); setLatency(null); })}>
-                <span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
-                  details.selectedProfile === profile.id ? "border-accent" : "border-line-strong")}>
-                  {details.selectedProfile === profile.id && <span className="h-2 w-2 rounded-full bg-accent" />}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-fg">{profile.name}</span>
-                  <span className="block truncate text-xs text-muted">{profile.protocol.toUpperCase()} · {profile.server}</span>
-                </span>
-              </button>
-              <IconButton icon="sliders" label={t("vpn.editProfile")} disabled={busy || dirty}
-                onClick={() => void perform(async () => {
-                  setEditorJson(await api.vpnProfileJson(profile.id)); setEditorName(profile.name); setEditor(profile);
-                })} />
-              <IconButton icon="trash" label={t("vpn.removeProfile")} disabled={busy || dirty}
-                onClick={() => setDeleteTarget({ id: profile.id, kind: "profile" })} />
-            </div>)}
+            {details.profiles.length === 0 ? <Empty>{t("vpn.noProfiles")}</Empty> : (
+              <div className="py-3">
+                <VpnServerButton name={selected?.name} disabled={busy || dirty}
+                  onClick={() => setPickerOpen(true)} />
+              </div>
+            )}
           </Panel>
           {details.subscriptions.length > 0 && <Panel title={t("vpn.subscriptions")}>
             {details.subscriptions.map((subscription) => <Row key={subscription.id} title={subscription.name}
@@ -269,6 +281,31 @@ export function VpnPage() {
         </div>}
       </>}
       {!details && !loadError && <div className="py-8"><Spinner /></div>}
+      {pickerOpen && details && <VpnServerPicker details={details} busy={busy}
+        onClose={() => setPickerOpen(false)}
+        onPick={(id) => {
+          if (id === details.selectedProfile) return setPickerOpen(false);
+          void perform(async () => {
+            accept(await api.vpnSelectProfile(id));
+            setLatency(null);
+            setPickerOpen(false);
+          });
+        }}
+        actions={(profile) => <>
+          <IconButton icon="sliders" label={t("vpn.editProfile")} disabled={busy}
+            onClick={() => void perform(async () => {
+              setEditorJson(await api.vpnProfileJson(profile.id));
+              setEditorName(profile.name);
+              setPickerOpen(false);
+              setEditor(profile);
+            })} />
+          <IconButton icon="trash" label={t("vpn.removeProfile")} disabled={busy}
+            onClick={() => {
+              setPickerOpen(false);
+              setDeleteTarget({ id: profile.id, kind: "profile" });
+            }} />
+        </>}
+      />}
       <Modal open={importOpen} onClose={busy ? undefined : () => { setImportOpen(false); setInput(""); }} title={t("vpn.add")}
         footer={<Button variant="primary" disabled={busy || !input.trim()} onClick={() => void perform(async () => {
           accept(await api.vpnImport(input)); setImportOpen(false); setInput("");

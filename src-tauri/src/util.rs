@@ -172,6 +172,50 @@ pub fn run_capture(program: &str, args: &[&str]) -> (bool, String) {
     }
 }
 
+/// Runs a small CLI query with bounded waiting, including when the child never answers.
+pub fn run_capture_timeout(
+    program: &str,
+    args: &[&str],
+    timeout: std::time::Duration,
+) -> (bool, String) {
+    use std::process::Stdio;
+    let mut child = match hidden_command(program)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(error) => return (false, error.to_string()),
+    };
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return (false, format!("{program} did not respond in time"));
+            }
+        }
+    }
+    match child.wait_with_output() {
+        Ok(out) => {
+            let text = format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            (out.status.success(), text)
+        }
+        Err(error) => (false, error.to_string()),
+    }
+}
+
 /// Async variant of `hidden_command` based on tokio.
 pub fn hidden_command_async(program: &str) -> tokio::process::Command {
     #[allow(unused_mut)]

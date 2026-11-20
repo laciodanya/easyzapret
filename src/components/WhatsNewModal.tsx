@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "../lib/store";
 import { Button, Modal } from "./ui";
 
-const ITEMS = ["reliability", "notifications", "settings", "warp", "deps"] as const;
+const ITEMS = ["vpn", "vpnRouting", "vpnSettings"] as const;
 
 export function WhatsNewModal() {
   const { t } = useTranslation();

@@ -229,6 +229,7 @@ pub fn service_strategy() -> Option<String> {
 /// Starts an already installed zapret service without recreating it or
 /// changing the strategy stored in its service command line.
 pub fn start_installed_service() -> Result<(), String> {
+    let _transition = crate::vpn::without_vpn()?;
     #[cfg(not(windows))]
     {
         Err("Windows only".into())
@@ -299,6 +300,7 @@ pub fn tcp_enable() {
 /// the "zapret" service with start=auto and remember the strategy in registry.
 #[tauri::command]
 pub fn install_zapret_service(strategy_file: String) -> Result<(), String> {
+    let _transition = crate::vpn::without_vpn()?;
     #[cfg(not(windows))]
     {
         let _ = strategy_file;
@@ -921,4 +923,123 @@ pub fn set_active_fake(kind: String, file: String) -> Result<ActiveFakesStatus, 
         &format!("Active fake {active_name} <- {stem}.bin (restart zapret to apply)"),
     );
     get_active_fakes()
+}
+
+/// Removes only zapret and the two WinDivert services it uses.
+#[cfg(windows)]
+pub fn remove_for_vpn(state: &AppState) -> Result<(), String> {
+    use std::time::{Duration, Instant};
+    use windows_sys::Win32::Foundation::{
+        ERROR_SERVICE_CANNOT_ACCEPT_CTRL, ERROR_SERVICE_DOES_NOT_EXIST,
+        ERROR_SERVICE_MARKED_FOR_DELETE, ERROR_SERVICE_NOT_ACTIVE,
+    };
+    use windows_sys::Win32::System::Services::*;
+
+    struct Handle(SC_HANDLE);
+    impl Drop for Handle {
+        fn drop(&mut self) {
+            unsafe { CloseServiceHandle(self.0) };
+        }
+    }
+
+    fn report(name: &str, error: impl std::fmt::Display) -> String {
+        logs::error("vpn", &format!("Could not remove {name}: {error}"));
+        "vpn_zapret_remove_failed".into()
+    }
+
+    fn open(manager: &Handle, name: &str, access: u32) -> Result<Option<Handle>, u32> {
+        let name: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+        let handle = unsafe { OpenServiceW(manager.0, name.as_ptr(), access) };
+        if handle.is_null() {
+            let error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+            if error == ERROR_SERVICE_DOES_NOT_EXIST {
+                Ok(None)
+            } else {
+                Err(error)
+            }
+        } else {
+            Ok(Some(Handle(handle)))
+        }
+    }
+
+    fn stop_delete(manager: &Handle, name: &str) -> Result<(), String> {
+        // DELETE is a standard access right defined by the Windows service API.
+        const DELETE: u32 = 0x0001_0000;
+        let handle = match open(manager, name, SERVICE_STOP | DELETE) {
+            Ok(Some(handle)) => handle,
+            Ok(None) | Err(ERROR_SERVICE_MARKED_FOR_DELETE) => return Ok(()),
+            Err(error) => return Err(report(name, error)),
+        };
+        let mut status = unsafe { std::mem::zeroed() };
+        let stopped = unsafe { ControlService(handle.0, SERVICE_CONTROL_STOP, &mut status) };
+        if stopped == 0 {
+            let error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+            if !matches!(
+                error,
+                ERROR_SERVICE_NOT_ACTIVE | ERROR_SERVICE_CANNOT_ACCEPT_CTRL
+            ) {
+                return Err(report(name, error));
+            }
+        }
+        let deleted = unsafe { DeleteService(handle.0) };
+        if deleted == 0 {
+            let error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+            if error != ERROR_SERVICE_MARKED_FOR_DELETE {
+                return Err(report(name, error));
+            }
+        }
+        Ok(())
+    }
+
+    const SERVICES: [&str; 3] = ["zapret", "WinDivert", "WinDivert14"];
+    let raw = unsafe { OpenSCManagerW(std::ptr::null(), std::ptr::null(), SC_MANAGER_CONNECT) };
+    if raw.is_null() {
+        return Err(report("SCM", std::io::Error::last_os_error()));
+    }
+    let manager = Handle(raw);
+    stop_delete(&manager, SERVICES[0])?;
+    super::process::stop(state);
+    if super::process::winws_running() {
+        super::process::wait_for_winws_exit(Duration::from_secs(3));
+    }
+    for name in &SERVICES[1..] {
+        stop_delete(&manager, name)?;
+    }
+    let deadline = Instant::now() + Duration::from_secs(6);
+    loop {
+        let mut pending = None;
+        for name in SERVICES {
+            match open(&manager, name, SERVICE_QUERY_STATUS) {
+                Ok(None) => {}
+                Ok(Some(_)) | Err(ERROR_SERVICE_MARKED_FOR_DELETE) => pending = Some(name),
+                Err(error) => return Err(report(name, error)),
+            }
+        }
+        let winws = crate::util::process_snapshot()
+            .ok_or_else(|| report("winws.exe", "process list unavailable"))?
+            .processes()
+            .values()
+            .any(|process| {
+                process
+                    .name()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case("winws.exe")
+            });
+        if pending.is_none() && !winws {
+            logs::append("vpn", "Zapret and WinDivert services are absent");
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(report(
+                pending.unwrap_or("winws.exe"),
+                "still present after stop and removal",
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
+#[cfg(not(windows))]
+pub fn remove_for_vpn(_state: &AppState) -> Result<(), String> {
+    Err("vpn_windows_only".into())
 }

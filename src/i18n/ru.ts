@@ -1,4 +1,7 @@
+import { vpnRu } from "./vpn";
+
 export default {
+  vpn: vpnRu,
   app: {
     name: "EasyZapret",
     tagline: "Zapret без консоли и ручной настройки",
@@ -9,6 +12,7 @@ export default {
     autopilot: "Автопилот",
     telegram: "Telegram",
     warp: "Cloudflare WARP",
+    vpn: "VPN",
     logs: "Логи",
     settings: "Настройки",
   },
@@ -71,6 +75,7 @@ export default {
     service_installed: "Установлена служба zapret. Удалите её на вкладке «Сервис» перед запуском тестов.",
     dpi_suite_unavailable: "Не удалось загрузить список DPI-чекеров. Проверьте сеть.",
     zapret_required: "WARP включается только при работающем Zapret. Сначала включите Zapret.",
+    warp_process_scan_failed: "Не удалось прочитать список процессов Windows.",
     warp_not_installed: "Cloudflare WARP не установлен. Установите клиент 1.1.1.1 и повторите.",
     autopilot_busy: "Автопилот сейчас проверяет или меняет стратегию. Подождите минуту и повторите.",
     no_services: "Выберите хотя бы один сервис для проверки.",
@@ -214,6 +219,18 @@ export default {
     title: "Что нового в {{version}}",
     gotIt: "Понятно",
     items: {
+      vpn: {
+        title: "VPN внутри EasyZapret",
+        text: "Добавьте свой ключ или подписку, выберите сервер и подключитесь со страницы VPN. Поддерживаются VLESS/Reality/XHTTP, VMess, Trojan, Shadowsocks, Hysteria2, TUIC и AnyTLS.",
+      },
+      vpnRouting: {
+        title: "VPN для выбранных приложений",
+        text: "Выберите приложения по имени процесса или пути к .exe. Можно также направить выбранные приложения напрямую и настроить правила по доменам и IP.",
+      },
+      vpnSettings: {
+        title: "Настройки подключения",
+        text: "Настройте DNS, MTU, IPv6 и автоподключение. Ключи сохраняются с шифрованием для вашей учетной записи Windows. Черновая версия требует проверки с вашим VPN-сервером.",
+      },
       reliability: {
         title: "Надёжнее состояние автопилота",
         text: "Состояние автопилота пишется атомарно: удачные стратегии по сетям не теряются при сбое записи. Mutex-ошибки больше не валят всё приложение.",
@@ -457,6 +474,10 @@ export default {
     connectionTipsTitle: "Если соединение нестабильно",
     conflictNote:
       "Попробуйте режим WARP + DoH и сбросьте ключи. Закройте ExitLag, GearUP и другие обходы — они конфликтуют с Zapret + WARP. Если смотрите YouTube через WARP + Tor, маршрут слишком длинный и соединение может быть нестабильным.",
+    closeProcesses: "Закрыть процессы",
+    closingProcesses: "Закрытие…",
+    conflictsClosed: "Конфликтующие процессы закрыты.",
+    conflictsStillRunning: "Остались запущены {{apps}}. Если они запустились снова, закройте их из трея.",
     conflictsDetectedTitle: "Обнаружены конфликтующие программы",
     conflictsDetectedText:
       "Сейчас запущены: {{apps}}. Они часто мешают Cloudflare WARP. Закройте их и попробуйте снова.",

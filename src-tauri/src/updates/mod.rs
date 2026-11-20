@@ -1,3 +1,5 @@
+mod vpn;
+
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -1014,14 +1016,29 @@ async fn install_tg(app: &AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn install_component(app: AppHandle, component: String) -> Result<String, String> {
-    let _install_guard = INSTALL_LOCK
-        .try_lock()
-        .map_err(|_| "another component installation is already running".to_string())?;
-    paths::ensure_dirs().map_err(|e| e.to_string())?;
+    let _install_guard = INSTALL_LOCK.try_lock().map_err(|_| {
+        if component == "vpn" {
+            "vpn_install_busy"
+        } else {
+            "another component installation is already running"
+        }
+    })?;
+    paths::ensure_dirs().map_err(|error| {
+        logs::error(
+            "app",
+            &format!("Cannot prepare component directory for {component}: {error}"),
+        );
+        if component == "vpn" {
+            "vpn_install_disk".into()
+        } else {
+            error.to_string()
+        }
+    })?;
     logs::append("app", &format!("install requested: {component}"));
     let result = match component.as_str() {
         "zapret" => install_zapret(&app).await,
         "tgproxy" => install_tg(&app).await,
+        "vpn" => vpn::install(&app).await,
         _ => Err(format!("unknown component: {component}")),
     };
     let _ = app.emit(

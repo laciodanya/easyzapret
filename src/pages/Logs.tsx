@@ -18,7 +18,7 @@ import {
   cn,
 } from "../components/ui";
 
-const TABS = ["app", "autopilot", "zapret", "tgproxy", "warp", "tests"] as const;
+const TABS = ["app", "autopilot", "zapret", "tgproxy", "warp", "vpn", "tests"] as const;
 type Tab = (typeof TABS)[number];
 
 const ISSUES_URL = "https://github.com/laciodanya/easyzapret/issues/new";

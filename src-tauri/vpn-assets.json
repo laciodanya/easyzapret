@@ -1,0 +1,20 @@
+[
+  {
+    "name": "sing-box",
+    "version": "1.12.12",
+    "archive": "sing-box-1.12.12-windows-amd64.zip",
+    "url": "https://github.com/SagerNet/sing-box/releases/download/v1.12.12/sing-box-1.12.12-windows-amd64.zip",
+    "size": 14030899,
+    "sha256": "352c69526b76cd199539c0e02b4042d1acc109cde3a0a671a40af4e24290faa4",
+    "files": ["sing-box.exe", "LICENSE"]
+  },
+  {
+    "name": "Xray",
+    "version": "25.10.15",
+    "archive": "Xray-windows-64.zip",
+    "url": "https://github.com/XTLS/Xray-core/releases/download/v25.10.15/Xray-windows-64.zip",
+    "size": 19948440,
+    "sha256": "bdda983f3ea16e8ec33822e3a04f27e0983797885507e4e3b52c6ae33d602341",
+    "files": ["xray.exe", "geoip.dat", "geosite.dat", "LICENSE"]
+  }
+]

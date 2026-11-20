@@ -10,7 +10,15 @@ const MAX_READ_BYTES: u64 = 2 * 1024 * 1024;
 const ROTATE_BYTES: u64 = 4 * 1024 * 1024;
 
 /// Logs EasyZapret writes itself. `zapret` also receives raw winws output.
-const LOG_NAMES: &[&str] = &["app", "zapret", "tgproxy", "tests", "warp", "autopilot"];
+const LOG_NAMES: &[&str] = &[
+    "app",
+    "zapret",
+    "tgproxy",
+    "tests",
+    "warp",
+    "vpn",
+    "autopilot",
+];
 
 #[derive(Debug, Clone, Copy)]
 pub enum Level {

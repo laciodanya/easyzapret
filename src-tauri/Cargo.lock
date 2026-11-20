@@ -1105,13 +1105,13 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "easyzapret"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
  "dirs 5.0.1",
  "futures-util",
- "minisign-verify 0.2.5",
+ "percent-encoding",
  "rand 0.8.8",
  "reqwest 0.12.28",
  "serde",
@@ -2595,12 +2595,6 @@ name = "mime"
 version = "0.3.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d5848f5a9e8117cf94f2f90faac24a87ff81600ff8628c1e3deaab572e76bfa1"
-
-[[package]]
-name = "minisign-verify"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22f9645cb765ea72b8111f36c522475d2daa0d22c957a9826437e97534bc4e9e"
 
 [[package]]
 name = "minisign-verify"
@@ -4847,7 +4841,7 @@ dependencies = [
  "infer",
  "libc",
  "log",
- "minisign-verify 0.3.0",
+ "minisign-verify",
  "osakit",
  "percent-encoding",
  "reqwest 0.13.5",

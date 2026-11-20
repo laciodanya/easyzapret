@@ -39,8 +39,10 @@ export function WarpPage() {
   const [resetting, setResetting] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [conflicts, setConflicts] = useState<string[]>([]);
+  const [closingConflicts, setClosingConflicts] = useState(false);
 
   const warp = status?.warp;
+  const vpnOn = !!status?.vpn.running;
   const installed = warp?.installed ?? details?.installed ?? false;
   const connected = warp?.connected ?? false;
   const zapretOn = !!(status?.zapret.running || status?.zapret.serviceState === "RUNNING");
@@ -65,13 +67,14 @@ export function WarpPage() {
   }, [loadDetails]);
 
   useEffect(() => {
+    if (closingConflicts) return;
     let cancelled = false;
     const refreshConflicts = async () => {
       try {
         const apps = await api.warpConflictApps();
         if (!cancelled) setConflicts(apps);
       } catch {
-        if (!cancelled) setConflicts([]);
+        // Keep the last result if Windows cannot refresh the process list.
       }
     };
     void refreshConflicts();
@@ -80,7 +83,23 @@ export function WarpPage() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [closingConflicts]);
+
+  async function closeConflicts() {
+    if (closingConflicts) return;
+    setClosingConflicts(true);
+    try {
+      const remaining = await api.warpCloseConflictApps();
+      setConflicts(remaining);
+      toast(remaining.length
+        ? t("warp.conflictsStillRunning", { apps: remaining.join(", ") })
+        : t("warp.conflictsClosed"), remaining.length ? "fail" : "ok");
+    } catch (error) {
+      toast(errText(t, error), "fail");
+    } finally {
+      setClosingConflicts(false);
+    }
+  }
 
   async function toggle(value: boolean) {
     if (value && !zapretOn) {
@@ -163,7 +182,7 @@ export function WarpPage() {
               <Switch
                 label={t("warp.connection")}
                 checked={action === "starting" || (action !== "stopping" && connected)}
-                disabled={action !== null || (!connected && !zapretOn)}
+                disabled={action !== null || (!connected && (!zapretOn || vpnOn))}
                 onChange={(v) => void toggle(v)}
               />
             </Row>
@@ -171,7 +190,7 @@ export function WarpPage() {
               {pendingMode && <Spinner size={14} />}
               <Segmented<WarpMode>
                 value={shownMode}
-                disabled={pendingMode !== null}
+                disabled={pendingMode !== null || vpnOn}
                 onChange={(m) => void changeMode(m)}
                 options={[
                   { value: "warp", label: t("warp.modeWarp") },
@@ -182,9 +201,15 @@ export function WarpPage() {
             </Row>
           </Panel>
 
-          {!zapretOn && !connected && <Note tone="warn">{t("warp.needZapret")}</Note>}
+          {vpnOn ? <Note>{t("vpn.errors.vpn_disconnect_first")}</Note>
+            : !zapretOn && !connected && <Note tone="warn">{t("warp.needZapret")}</Note>}
           {conflicts.length > 0 && (
-            <Note tone="fail" title={t("warp.conflictsDetectedTitle")}>
+            <Note tone="fail" title={t("warp.conflictsDetectedTitle")} action={
+              <Button variant="danger" disabled={closingConflicts} onClick={() => void closeConflicts()}>
+                {closingConflicts && <Spinner size={14} />}
+                {t(closingConflicts ? "warp.closingProcesses" : "warp.closeProcesses")}
+              </Button>
+            }>
               {t("warp.conflictsDetectedText", { apps: conflicts.join(", ") })}
             </Note>
           )}
@@ -197,7 +222,7 @@ export function WarpPage() {
               <Badge tone={details?.registered ? "ok" : "warn"}>
                 {details?.registered ? t("warp.registered") : t("warp.notRegistered")}
               </Badge>
-              <Button variant="danger" disabled={resetting} onClick={() => setConfirmReset(true)}>
+              <Button variant="danger" disabled={resetting || vpnOn} onClick={() => setConfirmReset(true)}>
                 {resetting && <Spinner size={14} />}
                 {t("warp.resetKeys")}
               </Button>

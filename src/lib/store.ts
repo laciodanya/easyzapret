@@ -5,6 +5,7 @@ import i18n, { systemLanguage } from "../i18n";
 import { toast } from "./toast";
 import { getStatus } from "./status";
 import { createSerialQueue } from "./serialQueue";
+import { vpnErrorText, type VpnInstallProgress } from "./vpn";
 import type {
   AppInfo,
   AppUpdateStatus,
@@ -25,6 +26,7 @@ export type Page =
   | "autopilot"
   | "telegram"
   | "warp"
+  | "vpn"
   | "logs"
   | "settings";
 
@@ -60,12 +62,16 @@ interface AppStore {
   serviceHealth: Record<string, ServiceHealth>;
   serviceCheckedAt: Date | null;
   serviceChecking: boolean;
+  vpnInstalling: boolean;
+  vpnInstallProgress: VpnInstallProgress | null;
+  vpnInstallError: string | null;
 
   setPage: (page: Page) => void;
   setZapretTab: (tab: ZapretTab) => void;
   init: () => Promise<void>;
   refreshStatus: () => Promise<void>;
   refreshComponents: () => Promise<void>;
+  installVpn: () => Promise<boolean>;
   refreshStrategies: () => Promise<void>;
   updateSettings: (patch: Partial<Settings>) => Promise<void>;
   updateAutostart: (patch: Partial<AutostartSettings>) => Promise<void>;
@@ -168,6 +174,30 @@ export const useStore = create<AppStore>((set, get) => ({
   serviceHealth: {},
   serviceCheckedAt: null,
   serviceChecking: false,
+  vpnInstalling: false,
+  vpnInstallProgress: null,
+  vpnInstallError: null,
+
+  installVpn: async () => {
+    if (get().vpnInstalling) return false;
+    set({ vpnInstalling: true, vpnInstallProgress: null, vpnInstallError: null });
+    let unlisten: UnlistenFn | undefined;
+    try {
+      unlisten = await listen<VpnInstallProgress>("vpn-install-progress", ({ payload }) => {
+        set({ vpnInstallProgress: payload });
+      }).catch(() => undefined);
+      await api.installComponent("vpn");
+      await get().refreshStatus();
+      toast(i18n.t("vpn.installed"), "ok");
+      return true;
+    } catch (error) {
+      set({ vpnInstallError: vpnErrorText(i18n.t.bind(i18n), error) });
+      return false;
+    } finally {
+      unlisten?.();
+      set({ vpnInstalling: false, vpnInstallProgress: null });
+    }
+  },
 
   setPage: (page) => set({ page }),
   setZapretTab: (zapretTab) => set({ zapretTab, page: "zapret" }),

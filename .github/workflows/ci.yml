@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_call:
+    inputs:
+      release_tag:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -19,6 +24,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || '' }}
+          persist-credentials: false
       - name: Setup Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -35,6 +43,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || '' }}
+          persist-credentials: false
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
         with:
@@ -44,12 +55,25 @@ jobs:
         uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: src-tauri
+          shared-key: easyzapret-windows
       - name: Formatting
         working-directory: src-tauri
         run: cargo fmt --all -- --check
       - name: Lint
         working-directory: src-tauri
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Setup Node for release asset checks
+        if: inputs.release_tag != ''
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Prepare verified VPN archives for release tests
+        if: inputs.release_tag != ''
+        shell: pwsh
+        run: |
+          node scripts/prepare-vpn-assets.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "EASYZAPRET_TEST_VPN_ARCHIVES=$env:GITHUB_WORKSPACE/src-tauri/vpn-components" >> $env:GITHUB_ENV
       - name: Tests
         working-directory: src-tauri
-        run: cargo test --all-features
+        run: cargo test --locked --all-features

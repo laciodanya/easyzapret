@@ -130,6 +130,7 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                     "quit requested from tray — stopping managed processes",
                 );
                 let state = app.state::<AppState>();
+                let _ = crate::vpn::shutdown();
                 crate::warp::disconnect_quiet();
                 crate::zapret::process::stop(&state);
                 crate::tg_proxy::kill_all();

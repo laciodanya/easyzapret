@@ -6,6 +6,14 @@
  */
 
 type Handler = (args: Record<string, unknown>) => unknown;
+import type { VpnDetails } from "../lib/vpn";
+
+const vpn: VpnDetails = {
+  status: { installed: false, running: false, mode: "only_apps", activeProfile: null, error: null },
+  settings: { mode: "only_apps", apps: [], bypassLan: true, dnsThroughVpn: false, dnsServer: "1.1.1.1",
+    mtu: 1500, stack: "mixed", ipv6: true, localPort: 2080, sniff: true, rules: [], autoConnect: false },
+  selectedProfile: null, profiles: [], subscriptions: [],
+};
 
 type MockWindow = Window & { __TAURI_INTERNALS__?: unknown };
 
@@ -45,6 +53,7 @@ const state = {
   tgRunning: false,
   warpConnected: false,
   warpMode: "warp",
+  warpConflicts: ["ExitLag", "GearUP"],
   autopilotEnabled: true,
   testsRunning: false,
   settings: {
@@ -117,7 +126,20 @@ function logText(name: string): string {
 }
 
 const handlers: Record<string, Handler> = {
-  get_app_info: () => ({ version: "0.6.3", dataDir: "C:\\EasyZapret", isAdmin: true, isWindows: true }),
+  install_component: async ({ component }) => {
+    if (component !== "vpn") return "preview";
+    const fail = new URLSearchParams(window.location.search).has("vpn-install-error");
+    for (const asset of ["sing-box", "Xray"]) {
+      for (const phase of fail ? ["downloading", "retrying"] : ["verifying", "extracting"]) {
+        emit("vpn-install-progress", { phase, asset, downloaded: 12_000_000, total: 14_000_000 });
+        await new Promise((resolve) => window.setTimeout(resolve, 300));
+      }
+      if (fail) throw new Error("vpn_install_timeout");
+    }
+    vpn.status.installed = true;
+    return "preview";
+  },
+  get_app_info: () => ({ version: "0.7.0", dataDir: "C:\\EasyZapret", isAdmin: true, isWindows: true }),
   get_settings: () => state.settings,
   patch_settings: (a) => {
     mergeObject(state.settings, a.patch as Record<string, unknown>);
@@ -178,6 +200,7 @@ const handlers: Record<string, Handler> = {
   }),
   list_strategies: () => STRATEGIES,
   get_status: () => ({
+    vpn: vpn.status,
     zapret: {
       running: state.zapretRunning,
       currentStrategy: state.zapretRunning ? state.settings.selectedStrategy : null,
@@ -206,6 +229,49 @@ const handlers: Record<string, Handler> = {
     autopilot: handlers.get_autopilot_status({}),
     testsRunning: state.testsRunning,
   }),
+  vpn_details: () => structuredClone(vpn),
+  vpn_save_settings: ({ settings }) => {
+    vpn.settings = structuredClone(settings) as VpnDetails["settings"];
+    vpn.status.mode = vpn.settings.mode;
+    return structuredClone(vpn);
+  },
+  vpn_import: ({ input }) => {
+    const id = crypto.randomUUID();
+    const isSubscription = String(input).startsWith("https://");
+    const subscriptionId = isSubscription ? crypto.randomUUID() : null;
+    if (subscriptionId) {
+      vpn.subscriptions.push({ id: subscriptionId, name: "Demo subscription", host: "vpn.example.com", updatedAt: new Date().toISOString() });
+      vpn.profiles.push({ id: crypto.randomUUID(), name: "Sweden", protocol: "trojan", server: "se.example.com", subscriptionId });
+    }
+    vpn.profiles.push({ id, name: isSubscription ? "Germany" : "VPN preview", protocol: "vless", server: "de.example.com", subscriptionId });
+    vpn.selectedProfile ??= id;
+    return structuredClone(vpn);
+  },
+  vpn_select_profile: ({ id }) => { vpn.selectedProfile = String(id); return structuredClone(vpn); },
+  vpn_remove_profile: ({ id }) => {
+    vpn.profiles = vpn.profiles.filter((p) => p.id !== id);
+    if (vpn.selectedProfile === id) vpn.selectedProfile = vpn.profiles[0]?.id ?? null;
+    return structuredClone(vpn);
+  },
+  vpn_connect: () => {
+    if (!vpn.status.installed) throw new Error("vpn_not_installed");
+    if (!vpn.selectedProfile) throw new Error("vpn_select_profile");
+    if (["only_apps", "bypass_apps"].includes(vpn.settings.mode) && vpn.settings.apps.length === 0) throw new Error("vpn_select_apps");
+    state.zapretRunning = false;
+    state.warpConnected = false;
+    vpn.status.running = true;
+    vpn.status.activeProfile = vpn.selectedProfile;
+  },
+  vpn_disconnect: () => { vpn.status.running = false; vpn.status.activeProfile = null; },
+  vpn_list_apps: () => ["C:\\Apps\\Discord\\Discord.exe", "C:\\Program Files\\Browser\\browser.exe"],
+  vpn_pick_app: () => "C:\\Apps\\Discord\\Discord.exe",
+  vpn_test_connection: () => 120,
+  vpn_profile_json: () => JSON.stringify({ protocol: "vless", tag: "proxy", settings: { vnext: [{ address: "vpn.example.com", port: 443, users: [{ id: "d342d11e-d424-4583-b36e-524ab1f0afa4", encryption: "none" }] }] } }, null, 2),
+  vpn_update_profile: ({ id, name }) => {
+    const profile = vpn.profiles.find((p) => p.id === id);
+    if (profile) profile.name = String(name);
+    return structuredClone(vpn);
+  },
   get_autopilot_status: () => ({
     enabled: state.autopilotEnabled,
     checking: false,
@@ -235,6 +301,7 @@ const handlers: Record<string, Handler> = {
   }),
   run_autopilot_check_now: () => handlers.get_autopilot_status({}),
   start_zapret: () => {
+    if (vpn.status.running) throw new Error("vpn_disconnect_first");
     state.zapretRunning = true;
   },
   stop_zapret: () => {
@@ -280,6 +347,7 @@ const handlers: Record<string, Handler> = {
     detail: null,
   }),
   warp_connect: () => {
+    if (vpn.status.running) throw new Error("vpn_disconnect_first");
     state.warpConnected = true;
   },
   warp_disconnect: () => {
@@ -290,7 +358,8 @@ const handlers: Record<string, Handler> = {
     return state.warpMode;
   },
   warp_reset_keys: () => undefined,
-  warp_conflict_apps: () => ["ExitLag"],
+  warp_conflict_apps: () => [...state.warpConflicts],
+  warp_close_conflict_apps: () => { state.warpConflicts = []; return []; },
   check_updates: () => [
     { component: "zapret", installed: "1.9.7", latest: "1.9.7", updateAvailable: false, releaseUrl: null, error: null },
     { component: "tgproxy", installed: "1.4.2", latest: "1.4.2", updateAvailable: false, releaseUrl: null, error: null },

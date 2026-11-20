@@ -30,6 +30,7 @@ const PATHS = {
   stop: "M6 6h12v12H6z",
   play: "M7 5v14l12-7z",
   minus: "M5 12h14",
+  plus: "M5 12h14 M12 5v14",
   square: "M5 5h14v14H5z",
   restore: "M8 8h11v11H8z M5 16V5h11",
 } as const;

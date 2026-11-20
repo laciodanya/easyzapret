@@ -825,7 +825,10 @@ pub async fn run_health_cycle(app: AppHandle, force: bool) -> Option<u32> {
     let _busy = AutopilotBusyGuard(app.clone());
 
     let cfg = settings::load().autopilot;
-    if !cfg.enabled || state.tests_running.load(Ordering::SeqCst) {
+    if !cfg.enabled
+        || state.tests_running.load(Ordering::SeqCst)
+        || crate::vpn::quick_status().running
+    {
         return None;
     }
     let interval = cfg.interval_minutes.clamp(5, 120);

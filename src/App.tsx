@@ -14,6 +14,7 @@ import { ZapretPage } from "./pages/Zapret";
 import { AutopilotPage } from "./pages/Autopilot";
 import { TelegramPage } from "./pages/Telegram";
 import { WarpPage } from "./pages/Warp";
+import { VpnPage } from "./pages/Vpn";
 import { LogsPage } from "./pages/Logs";
 import { SettingsPage } from "./pages/Settings";
 
@@ -113,6 +114,7 @@ export default function App() {
               {page === "zapret" && <ZapretPage />}
               {page === "telegram" && <TelegramPage />}
               {page === "warp" && <WarpPage />}
+              {page === "vpn" && <VpnPage />}
               {page === "logs" && <LogsPage />}
               {page === "settings" && <SettingsPage />}
             </div>

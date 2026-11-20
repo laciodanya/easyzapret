@@ -6,9 +6,11 @@ import { formatClock } from "../lib/format";
 import { HOME_SERVICES, useStore } from "../lib/store";
 import { waitForStatus } from "../lib/status";
 import type { ServiceHealth } from "../lib/types";
+import type { VpnDetails } from "../lib/vpn";
 import { Icon, type IconName } from "../components/icons";
 import { PowerButton } from "../components/PowerButton";
 import { StrategyPickerModal } from "../components/StrategyPickerModal";
+import { VpnServerButton, VpnServerPicker } from "../components/VpnServerPicker";
 import { IconButton, StatusDot, type Tone } from "../components/ui";
 
 type ToggleAction = "starting" | "stopping" | null;
@@ -62,6 +64,9 @@ export function HomePage() {
   const { t } = useTranslation();
   const {
     status,
+    appInfo,
+    vpnInstalling,
+    refreshStatus,
     settings,
     components,
     setPage,
@@ -75,18 +80,82 @@ export function HomePage() {
   const [zapretAction, setZapretAction] = useState<ToggleAction>(null);
   const [tgAction, setTgAction] = useState<ToggleAction>(null);
   const [warpAction, setWarpAction] = useState<ToggleAction>(null);
+  const [vpnAction, setVpnAction] = useState<ToggleAction>(null);
+  const [vpnDetails, setVpnDetails] = useState<VpnDetails | null>(null);
+  const [vpnPickerOpen, setVpnPickerOpen] = useState(false);
+  const [vpnPicking, setVpnPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const zapret = status?.zapret;
   const tg = status?.tg;
   const warp = status?.warp;
+  const vpn = status?.vpn;
+  const vpnOn = !!vpn?.running;
+  const vpnInstalled = vpn?.installed ?? vpnDetails?.status.installed ?? false;
+  const selectedServer = vpnDetails?.profiles.find((server) => server.id === vpnDetails.selectedProfile);
+  const vpnSwitching = vpnAction !== null || vpnPicking;
   const zapretOn = !!(zapret?.running || zapret?.serviceState === "RUNNING");
   const viaService = !!zapret?.serviceInstalled;
   const strategyName = viaService
     ? (zapret?.serviceStrategy ?? t("home.noStrategy"))
     : ((zapret?.currentStrategy ?? settings?.selectedStrategy)?.replace(/\.bat$/i, "") ??
       t("home.noStrategy"));
+
+  useEffect(() => {
+    let active = true;
+    api.vpnDetails().then((details) => {
+      if (active) setVpnDetails(details);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  function pickVpnServer() {
+    if (vpnDetails?.profiles.length) setVpnPickerOpen(true);
+    else setPage("vpn");
+  }
+
+  async function selectVpnServer(id: string) {
+    if (id === vpnDetails?.selectedProfile) {
+      setVpnPickerOpen(false);
+      return;
+    }
+    setVpnPicking(true);
+    setError(null);
+    try {
+      setVpnDetails(await api.vpnSelectProfile(id));
+      setVpnPickerOpen(false);
+    } catch (error) {
+      setError(errText(t, error));
+      setVpnPickerOpen(false);
+    } finally {
+      await refreshStatus();
+      setVpnPicking(false);
+    }
+  }
+
+  async function toggleVpn(value: boolean) {
+    setError(null);
+    if (value && (!vpnInstalled || !selectedServer)) {
+      setPage("vpn");
+      return;
+    }
+    const vpnSettings = vpnDetails?.settings;
+    if (value && vpnSettings && ["only_apps", "bypass_apps"].includes(vpnSettings.mode) && !vpnSettings.apps.length) {
+      setPage("vpn");
+      return;
+    }
+    setVpnAction(value ? "starting" : "stopping");
+    try {
+      if (value) await api.vpnConnect();
+      else await api.vpnDisconnect();
+    } catch (error) {
+      setError(errText(t, error));
+    } finally {
+      await refreshStatus();
+      setVpnAction(null);
+    }
+  }
 
   // Re-check reachability shortly after Zapret comes up, unless a recent result exists.
   useEffect(() => {
@@ -200,32 +269,51 @@ export function HomePage() {
 
   return (
     <div className="space-y-7">
-      <section className="flex flex-col items-center gap-4 text-center">
-        <PowerButton
-          on={zapretAction ? zapretAction === "starting" : zapretOn}
-          busy={zapretAction !== null}
-          disabled={!components?.zapretInstalled && !zapretOn}
-          label="Zapret"
-          onClick={() => void toggleZapret(!zapretOn)}
-        />
-        <div className="min-h-9">
-          <h1 className="text-2xl font-semibold leading-tight">Zapret</h1>
-          <p className={error ? "mt-1.5 max-w-md text-sm text-fail" : "mt-1.5 text-sm text-muted"}>
-            {error ?? (viaService ? t("home.viaService", { name: strategyName }) : null)}
-          </p>
+      <section className="mx-auto grid max-w-2xl grid-cols-2 items-start gap-6 text-center">
+        <div className="flex min-w-0 flex-col items-center gap-4">
+          <PowerButton
+            on={zapretAction ? zapretAction === "starting" : zapretOn}
+            busy={zapretAction !== null}
+            disabled={vpnOn || vpnSwitching || (!components?.zapretInstalled && !zapretOn)}
+            label="Zapret"
+            onClick={() => void toggleZapret(!zapretOn)}
+          />
+          <div className="min-h-12">
+            <h1 className="text-2xl font-semibold leading-tight">Zapret</h1>
+            <p className="mt-1 text-xs text-muted">
+              {vpnOn ? t("vpn.stopToUseZapret") : viaService ? t("home.viaService", { name: strategyName }) : null}
+            </p>
+          </div>
+          <button type="button" disabled={viaService || vpnSwitching} onClick={() => setPickerOpen(true)}
+            className="flex min-w-0 w-full items-center justify-between gap-4 rounded-panel border border-line bg-panel px-4 py-2.5 text-left transition-colors enabled:hover:border-line-strong disabled:opacity-50">
+            <span className="min-w-0">
+              <span className="block text-xs text-muted">{t("home.strategyLabel")}</span>
+              <span className="block truncate text-sm font-medium">{strategyName}</span>
+            </span>
+            <Icon name="chevronDown" size={16} className="shrink-0 text-muted" />
+          </button>
         </div>
-        <button
-          type="button"
-          disabled={viaService}
-          onClick={() => setPickerOpen(true)}
-          className="flex min-w-64 items-center justify-between gap-4 rounded-panel border border-line bg-panel px-4 py-2.5 text-left transition-colors enabled:hover:border-line-strong disabled:opacity-50"
-        >
-          <span className="min-w-0">
-            <span className="block text-xs text-muted">{t("home.strategyLabel")}</span>
-            <span className="block truncate text-sm font-medium">{strategyName}</span>
-          </span>
-          <Icon name="chevronDown" size={16} className="shrink-0 text-muted" />
-        </button>
+        <div className="flex min-w-0 flex-col items-center gap-4">
+          <PowerButton
+            on={vpnAction ? vpnAction === "starting" : vpnOn}
+            busy={vpnSwitching || vpnInstalling}
+            disabled={appInfo?.isWindows === false || zapretAction !== null || warpAction !== null}
+            label="VPN"
+            onClick={() => void toggleVpn(!vpnOn)}
+          />
+          <div className="min-h-12">
+            <h2 className="text-2xl font-semibold leading-tight">VPN</h2>
+            <p className="mt-1 text-xs text-muted">
+              {t(vpnOn ? "vpn.connected" : vpnInstalling ? "vpn.installing" : !vpnInstalled ? "vpn.installTitle" : "vpn.disconnected")}
+            </p>
+          </div>
+          <VpnServerButton name={selectedServer?.name}
+            disabled={vpnSwitching || vpnInstalling || appInfo?.isWindows === false} onClick={pickVpnServer} />
+        </div>
+        {error && <p role="alert" className="col-span-2 -mt-2 text-sm text-fail">{error}</p>}
+        {!vpnOn && (viaService || zapretOn || warp?.connected) && (
+          <p className="col-span-2 -mt-2 text-xs text-muted">{t("vpn.switchToVpn")}</p>
+        )}
       </section>
 
       <section className="flex items-start justify-center gap-12">
@@ -241,7 +329,7 @@ export function HomePage() {
           label={t("home.warpShort")}
           on={warpAction ? warpAction === "starting" : !!warp?.connected}
           busy={warpAction !== null}
-          disabled={!warp?.installed && !warp?.connected}
+          disabled={vpnOn || vpnSwitching || (!warp?.installed && !warp?.connected)}
           icon="cloud"
           onClick={() => void toggleWarp(!warp?.connected)}
         />
@@ -300,6 +388,8 @@ export function HomePage() {
       </section>
 
       <StrategyPickerModal open={pickerOpen} onClose={() => setPickerOpen(false)} />
+      {vpnPickerOpen && vpnDetails && <VpnServerPicker details={vpnDetails} busy={vpnPicking}
+        onClose={() => setVpnPickerOpen(false)} onPick={(id) => void selectVpnServer(id)} />}
     </div>
   );
 }

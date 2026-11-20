@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { VpnDetails, VpnSettings } from "./vpn";
 import type {
   ActiveFakesStatus,
   AppInfo,
@@ -37,6 +38,7 @@ const QUIET_COMMANDS = new Set([
   "zapret_status",
   "tg_status",
   "warp_details",
+  "warp_conflict_apps",
   "list_strategies",
   "read_user_lists",
   "read_log",
@@ -63,12 +65,14 @@ function describeArgs(args?: Record<string, unknown>): string {
 }
 
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  const quiet = QUIET_COMMANDS.has(command);
+  const quiet = QUIET_COMMANDS.has(command) || command.startsWith("vpn_");
   if (!quiet) logUi("info", `action: ${command}${describeArgs(args)}`);
   try {
     return await invoke<T>(command, args);
   } catch (e) {
-    if (command !== "log_ui") logUi("error", `${command} failed: ${String(e)}`);
+    if (command !== "log_ui") {
+      logUi("error", command.startsWith("vpn_") ? `${command} failed` : `${command} failed: ${String(e)}`);
+    }
     throw e;
   }
 }
@@ -86,7 +90,7 @@ export const api = {
 
   // components / updates
   getComponentsState: () => call<ComponentsState>("get_components_state"),
-  installComponent: (component: "zapret" | "tgproxy") =>
+  installComponent: (component: "zapret" | "tgproxy" | "vpn") =>
     call<string>("install_component", { component }),
   checkUpdates: () => call<UpdateStatus[]>("check_updates"),
   checkAppUpdate: () => call<AppUpdateStatus>("check_app_update"),
@@ -136,6 +140,23 @@ export const api = {
   /** Resolves with the mode warp-cli actually reports after the change. */
   warpSetMode: (mode: "warp" | "doh" | "warp+doh") => call<string>("warp_set_mode", { mode }),
   warpConflictApps: () => call<string[]>("warp_conflict_apps"),
+  warpCloseConflictApps: () => call<string[]>("warp_close_conflict_apps"),
+
+  vpnDetails: () => call<VpnDetails>("vpn_details"),
+  vpnImport: (input: string) => call<VpnDetails>("vpn_import", { input }),
+  vpnSaveSettings: (settings: VpnSettings) => call<VpnDetails>("vpn_save_settings", { settings }),
+  vpnSelectProfile: (id: string) => call<VpnDetails>("vpn_select_profile", { id }),
+  vpnRemoveProfile: (id: string) => call<VpnDetails>("vpn_remove_profile", { id }),
+  vpnProfileJson: (id: string) => call<string>("vpn_profile_json", { id }),
+  vpnUpdateProfile: (id: string, name: string, json: string) =>
+    call<VpnDetails>("vpn_update_profile", { id, name, json }),
+  vpnRefreshSubscription: (id: string) => call<VpnDetails>("vpn_refresh_subscription", { id }),
+  vpnRemoveSubscription: (id: string) => call<VpnDetails>("vpn_remove_subscription", { id }),
+  vpnConnect: () => call<void>("vpn_connect"),
+  vpnDisconnect: () => call<void>("vpn_disconnect"),
+  vpnListApps: () => call<string[]>("vpn_list_apps"),
+  vpnPickApp: () => call<string | null>("vpn_pick_app"),
+  vpnTestConnection: () => call<number>("vpn_test_connection"),
 
   // autopilot
   getAutopilotStatus: () => call<AutopilotStatus>("get_autopilot_status"),

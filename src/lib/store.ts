@@ -25,6 +25,7 @@ export type Page =
   | "autopilot"
   | "telegram"
   | "warp"
+  | "vpn"
   | "logs"
   | "settings";
 

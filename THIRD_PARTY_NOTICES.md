@@ -9,6 +9,8 @@ EasyZapret does not include zapret, WinDivert or tg-ws-proxy in this repository.
 
 Those packages keep their own licenses. Check the license files that come with each download.
 
+The VPN page downloads pinned, checksum-verified official releases of Xray-core 25.10.15 and sing-box 1.12.12 into the protected component directory. Their license files are retained alongside the executables. Xray-core uses MPL-2.0 and sing-box uses GPL-3.0-or-later. sing-box manages its Windows TUN interface through Wintun, whose license is included in its upstream source. EasyZapret launches these components as separate processes. [Xray-core](https://github.com/XTLS/Xray-core) · [sing-box](https://github.com/SagerNet/sing-box) · [Wintun](https://www.wintun.net/)
+
 | Component | Source | License |
 | --------- | ------ | ------- |
 | zapret (winws) | [bol-van/zapret](https://github.com/bol-van/zapret) | MIT |

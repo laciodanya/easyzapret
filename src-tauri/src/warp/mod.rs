@@ -253,6 +253,10 @@ pub fn warp_connect(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 pub fn connect_with_state(state: &AppState) -> Result<(), String> {
+    let _transition = util::lock_mutex(&crate::NETWORK_TRANSITION);
+    if crate::vpn::tun_running() {
+        return Err("vpn_warp_conflict".into());
+    }
     let Some(cli) = warp_cli() else {
         return Err("warp_not_installed".into());
     };

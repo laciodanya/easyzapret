@@ -8,7 +8,7 @@ if (!/^\d+\.\d+\.\d+$/.test(version)) {
 }
 
 const text = readFileSync("CHANGELOG.md", "utf8");
-const match = text.match(new RegExp(`(^## ${version}\\s*[\\r\\n]+)([\\s\\S]*?)(?=^## |\\Z)`, "m"));
+const match = text.match(new RegExp(`(^## ${version}\\s*[\\r\\n]+)([\\s\\S]*?)(?=^## |(?![\\s\\S]))`, "m"));
 if (!match) {
   console.error(`No CHANGELOG section for ${version}`);
   process.exit(1);

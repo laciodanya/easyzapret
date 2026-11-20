@@ -12,6 +12,7 @@ const NAV: { id: Page; icon: IconName }[][] = [
   [
     { id: "telegram", icon: "send" },
     { id: "warp", icon: "cloud" },
+    { id: "vpn", icon: "shield" },
   ],
   [
     { id: "logs", icon: "file" },
@@ -117,6 +118,8 @@ export function Sidebar() {
           tone={status?.warp.connected ? "ok" : "off"}
           text={status?.warp.connected ? on : off}
         />
+        <StateLine page="vpn" label="VPN" tone={status?.vpn?.running ? "ok" : "off"}
+          text={status?.vpn?.running ? on : off} />
         <div className="mt-2 px-3 text-xs text-faint">v{appInfo?.version ?? ""}</div>
       </div>
     </aside>

@@ -77,6 +77,10 @@ pub fn tg_exe() -> PathBuf {
     tg_dir().join("TgWsProxy_windows.exe")
 }
 
+pub fn vpn_dir() -> PathBuf {
+    data_dir().join("vpn")
+}
+
 pub fn logs_dir() -> PathBuf {
     data_dir().join("logs")
 }
@@ -128,7 +132,7 @@ pub fn ensure_dirs() -> std::io::Result<()> {
         }
     }
 
-    for dir in [zapret_dir(), tg_dir(), logs_dir(), tmp_dir()] {
+    for dir in [zapret_dir(), tg_dir(), vpn_dir(), logs_dir(), tmp_dir()] {
         #[cfg(windows)]
         reject_reparse_point(&dir)?;
         std::fs::create_dir_all(dir)?;

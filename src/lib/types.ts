@@ -154,6 +154,7 @@ export interface FullStatus {
   zapret: ZapretStatus;
   tg: TgStatus;
   warp: WarpStatus;
+  vpn: import("./vpn").VpnStatus;
   autopilot: AutopilotStatus;
   testsRunning: boolean;
 }

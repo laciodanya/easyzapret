@@ -14,6 +14,7 @@ mod tg_proxy;
 mod tray;
 mod updates;
 mod util;
+mod vpn;
 mod warp;
 mod zapret;
 
@@ -24,6 +25,9 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
+
+/// Serializes tunnel transitions between WARP and the managed VPN.
+pub(crate) static NETWORK_TRANSITION: Mutex<()> = Mutex::new(());
 
 pub struct AppState {
     /// winws.exe child started by us in this session
@@ -78,6 +82,7 @@ struct FullStatus {
     zapret: zapret::service::ZapretStatus,
     tg: tg_proxy::TgStatus,
     warp: warp::WarpStatus,
+    vpn: vpn::VpnStatus,
     autopilot: autopilot::AutopilotStatus,
     tests_running: bool,
 }
@@ -181,6 +186,7 @@ fn get_status(app: AppHandle, state: State<'_, AppState>) -> FullStatus {
         zapret,
         tg,
         warp: warp::quick_status(),
+        vpn: vpn::quick_status(),
         autopilot: autopilot::status_with(service_installed),
         tests_running: state.tests_running.load(Ordering::SeqCst),
     };
@@ -346,9 +352,12 @@ pub fn run() {
             let boot_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(2)).await;
-                autostart::run_boot_sequence(boot_app).await;
+                vpn::recover(&boot_app).await;
+                autostart::run_boot_sequence(boot_app.clone()).await;
+                vpn::auto_connect(&boot_app).await;
             });
             autopilot::start_background_loop(app.handle().clone());
+            vpn::start_monitor(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -404,6 +413,20 @@ pub fn run() {
             warp::warp_reset_keys,
             warp::warp_set_mode,
             warp::warp_conflict_apps,
+            vpn::vpn_details,
+            vpn::vpn_import,
+            vpn::vpn_save_settings,
+            vpn::vpn_select_profile,
+            vpn::vpn_remove_profile,
+            vpn::vpn_profile_json,
+            vpn::vpn_update_profile,
+            vpn::vpn_refresh_subscription,
+            vpn::vpn_remove_subscription,
+            vpn::vpn_connect,
+            vpn::vpn_disconnect,
+            vpn::vpn_list_apps,
+            vpn::vpn_pick_app,
+            vpn::vpn_test_connection,
             autopilot::get_autopilot_status,
             autopilot::run_autopilot_check_now,
             autostart::get_autostart_state,

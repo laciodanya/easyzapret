@@ -6,6 +6,14 @@
  */
 
 type Handler = (args: Record<string, unknown>) => unknown;
+import type { VpnDetails } from "../lib/vpn";
+
+const vpn: VpnDetails = {
+  status: { installed: false, running: false, mode: "only_apps", activeProfile: null, error: null },
+  settings: { mode: "only_apps", apps: [], bypassLan: true, dnsThroughVpn: false, dnsServer: "1.1.1.1",
+    mtu: 1500, stack: "mixed", ipv6: true, localPort: 2080, sniff: true, rules: [], autoConnect: false },
+  selectedProfile: null, profiles: [], subscriptions: [],
+};
 
 type MockWindow = Window & { __TAURI_INTERNALS__?: unknown };
 
@@ -117,6 +125,10 @@ function logText(name: string): string {
 }
 
 const handlers: Record<string, Handler> = {
+  install_component: ({ component }) => {
+    if (component === "vpn") vpn.status.installed = true;
+    return "preview";
+  },
   get_app_info: () => ({ version: "0.6.3", dataDir: "C:\\EasyZapret", isAdmin: true, isWindows: true }),
   get_settings: () => state.settings,
   patch_settings: (a) => {
@@ -178,6 +190,7 @@ const handlers: Record<string, Handler> = {
   }),
   list_strategies: () => STRATEGIES,
   get_status: () => ({
+    vpn: vpn.status,
     zapret: {
       running: state.zapretRunning,
       currentStrategy: state.zapretRunning ? state.settings.selectedStrategy : null,
@@ -206,6 +219,42 @@ const handlers: Record<string, Handler> = {
     autopilot: handlers.get_autopilot_status({}),
     testsRunning: state.testsRunning,
   }),
+  vpn_details: () => structuredClone(vpn),
+  vpn_save_settings: ({ settings }) => {
+    vpn.settings = structuredClone(settings) as VpnDetails["settings"];
+    vpn.status.mode = vpn.settings.mode;
+    return structuredClone(vpn);
+  },
+  vpn_import: ({ input }) => {
+    const id = crypto.randomUUID();
+    vpn.profiles.push({ id, name: "VPN preview", protocol: "vless", server: "vpn.example.com", subscriptionId: null });
+    vpn.selectedProfile ??= id;
+    void input;
+    return structuredClone(vpn);
+  },
+  vpn_select_profile: ({ id }) => { vpn.selectedProfile = String(id); return structuredClone(vpn); },
+  vpn_remove_profile: ({ id }) => {
+    vpn.profiles = vpn.profiles.filter((p) => p.id !== id);
+    if (vpn.selectedProfile === id) vpn.selectedProfile = vpn.profiles[0]?.id ?? null;
+    return structuredClone(vpn);
+  },
+  vpn_connect: () => {
+    if (state.warpConnected && vpn.settings.mode !== "proxy") throw new Error("vpn_warp_conflict");
+    if (!vpn.selectedProfile) throw new Error("vpn_select_profile");
+    if (["only_apps", "bypass_apps"].includes(vpn.settings.mode) && vpn.settings.apps.length === 0) throw new Error("vpn_select_apps");
+    vpn.status.running = true;
+    vpn.status.activeProfile = vpn.selectedProfile;
+  },
+  vpn_disconnect: () => { vpn.status.running = false; vpn.status.activeProfile = null; },
+  vpn_list_apps: () => ["C:\\Apps\\Discord\\Discord.exe", "C:\\Program Files\\Browser\\browser.exe"],
+  vpn_pick_app: () => "C:\\Apps\\Discord\\Discord.exe",
+  vpn_test_connection: () => 120,
+  vpn_profile_json: () => JSON.stringify({ protocol: "vless", tag: "proxy", settings: { vnext: [{ address: "vpn.example.com", port: 443, users: [{ id: "d342d11e-d424-4583-b36e-524ab1f0afa4", encryption: "none" }] }] } }, null, 2),
+  vpn_update_profile: ({ id, name }) => {
+    const profile = vpn.profiles.find((p) => p.id === id);
+    if (profile) profile.name = String(name);
+    return structuredClone(vpn);
+  },
   get_autopilot_status: () => ({
     enabled: state.autopilotEnabled,
     checking: false,
@@ -280,6 +329,7 @@ const handlers: Record<string, Handler> = {
     detail: null,
   }),
   warp_connect: () => {
+    if (vpn.status.running && vpn.settings.mode !== "proxy") throw new Error("vpn_warp_conflict");
     state.warpConnected = true;
   },
   warp_disconnect: () => {

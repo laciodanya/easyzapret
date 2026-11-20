@@ -1,4 +1,7 @@
+import { vpnEn } from "./vpn";
+
 export default {
+  vpn: vpnEn,
   app: {
     name: "EasyZapret",
     tagline: "Zapret without the console or manual setup",
@@ -9,6 +12,7 @@ export default {
     autopilot: "Autopilot",
     telegram: "Telegram",
     warp: "Cloudflare WARP",
+    vpn: "VPN",
     logs: "Logs",
     settings: "Settings",
   },
@@ -214,6 +218,18 @@ export default {
     title: "What's new in {{version}}",
     gotIt: "Got it",
     items: {
+      vpn: {
+        title: "VPN inside EasyZapret",
+        text: "Add your own key or subscription, choose a server and connect from the VPN page. Supports VLESS/Reality/XHTTP, VMess, Trojan, Shadowsocks, Hysteria2, TUIC and AnyTLS.",
+      },
+      vpnRouting: {
+        title: "VPN for selected applications",
+        text: "Choose applications by process name or .exe path. You can also bypass VPN for selected apps and configure domain and IP routing rules.",
+      },
+      vpnSettings: {
+        title: "Connection settings",
+        text: "Configure DNS, MTU, IPv6 and automatic connections. Keys are encrypted for your Windows account. This draft requires testing with your VPN server.",
+      },
       reliability: {
         title: "More reliable autopilot state",
         text: "Autopilot state is written atomically, so strategies that worked on a network survive a failed write. Mutex poison no longer takes down the whole app.",

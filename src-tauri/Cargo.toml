@@ -34,7 +34,7 @@ sha2 = "0.10"
 
 [dev-dependencies]
 base64 = "0.22"
-minisign-verify = "0.2.5"
+minisign-verify = "0.3.0"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
